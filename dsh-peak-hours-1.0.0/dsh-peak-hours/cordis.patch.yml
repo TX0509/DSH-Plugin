@@ -1,0 +1,14 @@
+# dsh-peak-hours bundle patch.
+#
+# Install (recommended):
+#   dsh plugin --profile web add link:<repo>/dsh-peak-hours
+# `dsh plugin` appends this package to `dsh.profile.bundles`; boot then merges
+# this patch, inserting the host row below, and the client-modules scan serves
+# `client.js` to the GUI.
+#
+# Manual install: add the package directory (or a junction to it) under
+# `<profile>/node_modules/dsh-peak-hours`, append `dsh-peak-hours` to
+# `dsh.profile.bundles` in the profile package.json, and restart DSH.
+- insert:
+    - id: peak-hours
+      name: 'dsh-peak-hours'

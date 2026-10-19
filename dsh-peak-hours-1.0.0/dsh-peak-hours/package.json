@@ -1,0 +1,49 @@
+{
+  "name": "dsh-peak-hours",
+  "version": "1.0.0",
+  "description": "Show whether DeepSeek API is currently in peak or off-peak pricing hours, right inside the DSH Web / desktop GUI.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "INSTALL.md",
+    "LICENSE",
+    "docs",
+    "scripts",
+    "test"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "pricing",
+    "off-peak"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "install-plugin": "node scripts/install.mjs",
+    "uninstall-plugin": "node scripts/install.mjs --uninstall",
+    "check-install": "node scripts/install.mjs --check"
+  },
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

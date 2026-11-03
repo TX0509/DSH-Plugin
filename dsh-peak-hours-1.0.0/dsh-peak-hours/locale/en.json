@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek Peak Hours",
+    "description": "Show whether DeepSeek API is currently in peak or off-peak pricing hours, right inside the DSH Web / desktop GUI."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek 计费时段",
+    "description": "在 DSH 侧边栏显示 DeepSeek API 当前处于波峰还是波谷计费时段。"
+  }
+}

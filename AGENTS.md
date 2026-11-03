@@ -2,6 +2,8 @@
 
 本文件面向在本仓库工作的 AI 与人类开发者，约定 **DeepSeek Harness（DSH）插件** 的开发方式。
 
+UI/UX 的视觉与交互决策见 [DESIGN.md](DESIGN.md)：本文负责工程约束与双端技术适配，`DESIGN.md` 负责界面设计契约。
+
 ## 1. 仓库定位
 
 - 本仓库**只用于开发和维护 DSH 插件 / bundle**，不是 DSH 本体。不要在这里修改 DSH 的安装目录、`app.asar`、Electron 外壳或官方包源码。
@@ -236,6 +238,7 @@ node --check client.js
 - `README.md`：功能、截图、判定/行为规则、**Web 与 Desktop 各自的安装方式**、兼容版本、开发与测试命令、卸载方式、已知限制。
 - `INSTALL.md`（推荐）：换机/迁移、无 Node 的手动安装、`DSH_HOME`、路径移动后重建链接、常见问题。
 - 兼容性矩阵：写清楚实测过的 DSH 版本、Node 版本、操作系统；Desktop 的 macOS/Windows 差异要单独说明。
+- UI/UX 必须符合 [DESIGN.md](DESIGN.md)：主题 token、响应式、桌面安全区、组件状态、无障碍和双端视觉验收都要对齐。
 - 如果插件依赖外部数据（节假日、价格、API），写清楚数据来源、更新周期和过期后的降级行为。
 
 文档默认使用中文；代码标识符、注释可以使用英文。对外发布时再补英文 README。
@@ -258,6 +261,7 @@ node --check client.js
 - [ ] Host 半区可空实现；所有注册都有清理逻辑。
 - [ ] 客户端通过 `window.__ModuleLoader__.load` 注册，无重复 React，无内部 Client 包依赖。
 - [ ] UI 只使用主题 token，亮/暗、宽/窄、侧栏展开/收起都可用。
+- [ ] UI/UX 符合 [DESIGN.md](DESIGN.md)：桌面安全区、弹层边界、键盘焦点、双端视觉验收通过。
 - [ ] Web 上桌面专属能力正确降级，不出现死按钮或报错。
 - [ ] `node --test`、`node --check` 通过。
 - [ ] 已在 Web 和 Desktop 实际安装并重启验证；无法验证的部分已明确标注。

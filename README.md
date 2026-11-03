@@ -19,7 +19,7 @@
   通过 DSH 公开的 `inputActions.captureInsertion()` / `insertText()` 插入文字，不模拟输入事件、不读写文件、不发起网络请求。主会话与侧边栏会话会按选区所属会话匹配各自的输入框。
 
 - **dsh-dev-commands**  
-  Host 负责通过 `ctx.commands.register()` 注册斜杠命令，Client 只给 `/review` / `/ship` 菜单行补上图标；命令本身不执行 git，而是把一段普通用户消息交给 Agent，由 Agent 使用已有的 bash / git 工具完成审查或提交推送。
+  Host 负责通过 `ctx.commands.register()` 注册斜杠命令，Client 给 `/review` / `/ship` 菜单行补齐中文标题、英文别名和图标；命令本身不执行 git，而是把一段普通用户消息交给 Agent，由 Agent 使用已有的 bash / git 工具完成审查或提交推送。
 
 ## 安装
 

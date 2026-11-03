@@ -12,7 +12,6 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react');
     const h = React.createElement;
-    const ICON_NAMES = new Set(['review', 'ship']);
 
     function iconSize(props) {
       return props !== null && props !== undefined && typeof props.size === 'number' && props.size > 0
@@ -57,9 +56,14 @@ window.__ModuleLoader__.load({
       ]);
     }
 
-    const ICONS = {
-      review: ReviewIcon,
-      ship: ShipIcon
+    /**
+     * The menu row face for each command. `label` supplies the localized title;
+     * the menu then renders the command name (`review` / `ship`) as its alias,
+     * exactly like a built-in command row.
+     */
+    const ROW_FACES = {
+      review: { label: '代码审查', description: '审查当前工作区未提交的改动', icon: ReviewIcon },
+      ship: { label: '提交并推送', description: '提交全部本地未提交改动并推送', icon: ShipIcon }
     };
 
     function apply(ctx) {
@@ -71,9 +75,17 @@ window.__ModuleLoader__.load({
         const rows = await original.call(this, session, request);
         if (!Array.isArray(rows)) return rows;
         return rows.map(function (row) {
-          if (row === null || row === undefined || row.icon !== undefined) return row;
-          if (!ICON_NAMES.has(row.name)) return row;
-          return Object.assign({}, row, { icon: ICONS[row.name] });
+          if (row === null || row === undefined) return row;
+          if (!Object.prototype.hasOwnProperty.call(ROW_FACES, row.name)) return row;
+          const face = ROW_FACES[row.name];
+          const next = Object.assign({}, row);
+          if (next.label === undefined) next.label = face.label;
+          // The menu description is part of this row face. Setting it here keeps
+          // the copy aligned even when the running Host still serves the earlier
+          // command definition text.
+          next.description = face.description;
+          if (next.icon === undefined) next.icon = face.icon;
+          return next;
         });
       };
 
@@ -96,7 +108,7 @@ window.__ModuleLoader__.load({
       inject: ['commandUi'],
       apply,
       __internals: {
-        ICON_NAMES,
+        ROW_FACES,
         ReviewIcon,
         ShipIcon,
         apply

@@ -21,8 +21,8 @@ export const inject = ['commands']
 
 const REVIEW_COMMAND = 'review'
 const SHIP_COMMAND = 'ship'
-const REVIEW_DESCRIPTION = '代码审查：审查当前工作区未提交的改动'
-const SHIP_DESCRIPTION = '提交并推送：提交并推送全部本地未提交改动'
+const REVIEW_DESCRIPTION = '审查当前工作区未提交的改动'
+const SHIP_DESCRIPTION = '提交全部本地未提交改动并推送'
 
 /**
  * Build the user-role message that enters the Agent inbox. The command

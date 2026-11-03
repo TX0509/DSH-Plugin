@@ -1,7 +1,7 @@
 {
   "name": "dsh-dev-commands",
   "version": "1.0.0",
-  "description": "Adds /review and /ship slash commands with menu icons for reviewing, committing, and pushing uncommitted changes.",
+  "description": "Adds /review and /ship slash commands with built-in-style menu labels and icons for reviewing, committing, and pushing uncommitted changes.",
   "type": "module",
   "main": "index.js",
   "exports": {

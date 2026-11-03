@@ -63,18 +63,33 @@ test('client half declares the commandUi injection and package wiring', () => {
   assert.ok(manifest.files.includes('client.js'));
 });
 
-test('attaches a line icon to /review and /ship rows only', async () => {
+test('attaches a built-in-style label and icon to /review and /ship rows only', async () => {
   const { ctx, ui } = makeContext([
-    { name: 'review', description: '代码审查' },
-    { name: 'ship', description: '提交并推送' },
+    { name: 'review', description: '代码审查：审查当前工作区未提交的改动' },
+    { name: 'ship', description: '提交并推送：提交并推送全部本地未提交改动' },
     { name: 'compact', description: 'compact', icon: 'existing-icon' }
   ]);
   client.apply(ctx);
   const rows = await ui.candidates('session', { query: '' });
+  assert.equal(rows[0].label, '代码审查');
+  assert.equal(rows[1].label, '提交并推送');
+  assert.equal(rows[0].description, '审查当前工作区未提交的改动');
+  assert.equal(rows[1].description, '提交全部本地未提交改动并推送');
+  assert.equal(rows[2].label, undefined);
   assert.equal(typeof rows[0].icon, 'function');
   assert.equal(typeof rows[1].icon, 'function');
   assert.equal(rows[2].icon, 'existing-icon');
   assert.notEqual(rows[0].icon, rows[1].icon);
+});
+
+test('keeps a label or icon another plugin already supplied', async () => {
+  const { ctx, ui } = makeContext([
+    { name: 'review', label: '自定义审查', icon: 'custom-icon' }
+  ]);
+  client.apply(ctx);
+  const rows = await ui.candidates('session', {});
+  assert.equal(rows[0].label, '自定义审查');
+  assert.equal(rows[0].icon, 'custom-icon');
 });
 
 test('icon components honor size and stay decorative', () => {

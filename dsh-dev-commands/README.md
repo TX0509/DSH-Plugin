@@ -9,7 +9,7 @@
 
 ## 使用
 
-在任意有会话的输入框中输入 `/`，从菜单选择命令，或在输入框直接输入：
+在任意有会话的输入框中输入 `/`，从菜单选择命令，或在输入框直接输入。菜单行显示中文标题、英文命令名别名和图标，排列方式与内置命令一致：
 
 | 输入 | 行为 |
 | --- | --- |
@@ -26,7 +26,7 @@
 插件由 Host 和 Client 两半组成：
 
 1. **Host**：通过 `ctx.commands.register()` 注册两个全局斜杠命令。
-2. **Client**：给斜杠菜单里 `/review` 和 `/ship` 两行补上线性图标；只装饰菜单候选行，不改变命令执行。
+2. **Client**：给斜杠菜单里 `/review` 和 `/ship` 两行补上中文标题、英文命令名别名和线性图标，排列方式与内置命令一致；只装饰菜单候选行，不改变命令执行。
 3. 命令处理器不直接执行 git，而是构造一条普通用户消息，通过 `agent.steer()` 交给当前会话的 Agent。
 4. Agent 使用它已有的 bash / git 工具、权限策略和 sandbox 完成审查或提交。
 5. 斜杠命令行和命令结果留在 UI 命令平面，不进入模型历史；只有生成的提示词作为普通用户消息进入会话。
@@ -60,18 +60,18 @@ node scripts/install.mjs --uninstall
 | DSH | `0.2.1-rc.5`（Desktop 内置运行时实测） |
 | Node | `>=20` |
 | 命令接口 | Host `ctx.commands`（DSH 0.2.x 的交互命令平面） |
-| 客户端 | 依赖 Profile 中已启用的 `dsh-client-ui-commands` / 会话斜杠菜单；Client 半区只补菜单图标，Web 与 Desktop 共用 |
+| 客户端 | 依赖 Profile 中已启用的 `dsh-client-ui-commands` / 会话斜杠菜单；Client 半区只补菜单行展示（标题/别名/图标），Web 与 Desktop 共用 |
 | 依赖 | 无第三方运行时依赖 |
 
 ## 验证状态
 
 本次完成：
 
-- `node --test`：15 个用例全部通过（Host 命令注册、两个提示词、参数透传、Agent 缺失/异常、重复命令、manifest / patch / locale / icon、安装脚本；Client 图标补全、图标尺寸、清理恢复）。
+- `node --test`：16 个用例全部通过（Host 命令注册、两个提示词、参数透传、Agent 缺失/异常、重复命令、manifest / patch / locale / icon、安装脚本；Client 行标题/别名/图标补全、已有 face 保留、图标尺寸、清理恢复）。
 - `node --check index.js`、`node --check client.js`、`node --check scripts/install.mjs`。
 - 安装到当前 Desktop profile 后，插件行已激活。
 
-**未完成**：当前会话没有浏览器/页面控制能力，无法实际在输入框输入 `/`、从菜单选择并观察 Agent 执行，因此斜杠菜单的图标、视觉和端到端行为未验收。Client 图标补全是单元测试覆盖的；请在重启 DSH 后按上方「使用」表格手动确认。如果菜单里没有命令或图标，检查 DevTools 控制台是否有插件加载错误，并确认 `dsh-client-ui-commands` 已启用。
+**未完成**：当前会话没有浏览器/页面控制能力，无法实际在输入框输入 `/`、从菜单选择并观察 Agent 执行，因此斜杠菜单的标题/图标视觉和端到端行为未验收。Client 菜单行补全是单元测试覆盖的；请在刷新或重启 DSH 后按上方「使用」表格手动确认。如果菜单里没有命令或图标，检查 DevTools 控制台是否有插件加载错误，并确认 `dsh-client-ui-commands` 已启用。
 
 ## 开发
 
@@ -82,7 +82,7 @@ node --check scripts/install.mjs
 ```
 
 - `index.js`：Host 命令注册、提示词构造、消息提交和错误处理。
-- `client.js`：Client 半区，为 `/review` 和 `/ship` 菜单行附加图标。
+- `client.js`：Client 半区，为 `/review` 和 `/ship` 菜单行补齐中文标题、命令名别名和图标。
 - `cordis.patch.yml`：把 `dev-commands` 这一行插入 Host loader。
 - `locale/*.json`：插件管理器中的标题/描述。
 - `scripts/install.mjs`：双端安装 / 检查 / 卸载。
@@ -90,8 +90,8 @@ node --check scripts/install.mjs
 
 ## 已知限制
 
-- 命令名只支持 DSH 规定的小写 ASCII 名称，不能直接注册 `/代码审查` 或 `/提交并推送`；菜单说明使用中文。
-- 图标补全通过包装 Client 的 `commandUi.candidates` 候选行实现，因为第三方 Host 命令没有官方 row-face 注册入口。DSH 若更换这个内部方法，图标可能不再显示，但命令本身仍可用；届时可移除 Client 半区，只保留 Host 命令。
+- 命令名只支持 DSH 规定的小写 ASCII 名称，不能直接注册 `/代码审查` 或 `/提交并推送`；菜单标题和说明使用中文。
+- 菜单行补全（标题、别名、图标）通过包装 Client 的 `commandUi.candidates` 候选行实现，因为第三方 Host 命令没有官方 row-face 注册入口。DSH 若更换这个内部方法，标题/图标可能不再显示，但命令本身仍可用；届时可移除 Client 半区，只保留 Host 命令。
 - 如果其他插件已经注册了同名 `/review` 或 `/ship`，本插件会记录警告并跳过冲突的那个命令，另一个仍会注册。
 - `/ship` 是「交给 Agent 执行」而不是 Host 直接执行 git；实际是否提交/推送取决于 Agent 的工具、权限和审批结果。
 - 命令不会自动创建 Session；请在已有会话的输入框中使用。

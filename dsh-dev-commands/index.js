@@ -5,11 +5,13 @@
  *   /review  - ask the Agent to review uncommitted changes
  *   /ship    - ask the Agent to commit all uncommitted changes and push
  *
- * The commands do not run git themselves. They submit one ordinary user
- * message through the receiving Agent (`agent.steer`), so the Agent uses its
- * normal bash/git tools, approval policy, and sandbox. The slash line and the
- * direct command result stay outside model history; only the generated prompt
- * becomes a normal user message.
+ * The commands do not run git themselves. They queue one ordinary user
+ * message through the receiving Agent (`agent.followup`), so the Agent uses
+ * its normal bash/git tools, approval policy, and sandbox. `followup` appends
+ * to `next-turn` instead of `next-step`: when the Agent is already working,
+ * the command waits for the current turn to finish instead of interrupting or
+ * redirecting it. The slash line and the direct command result stay outside
+ * model history; only the generated prompt becomes a normal user message.
  */
 import { randomUUID } from 'node:crypto'
 
@@ -81,17 +83,32 @@ function shipPrompt(hint) {
   return lines.join('\n')
 }
 
-/** Submit one ordinary user message to the invoking Agent. */
-function submit(agent, text, successText) {
-  if (agent === null || agent === undefined || typeof agent.steer !== 'function') {
+/**
+ * Queue one ordinary user message for the invoking Agent.
+ *
+ * `agent.followup` targets the inbox's `next-turn` list, so a message sent
+ * while the Agent is running waits for the current turn to finish. `steer`
+ * would target `next-step` and redirect the task already in flight, which is
+ * exactly what these commands must not do. The success text tells the user
+ * whether the work started immediately or was queued.
+ */
+function submit(agent, text, feedback) {
+  if (agent === null || agent === undefined) {
     return {
       kind: 'error',
       text: '当前命令没有可用的 Agent；请先打开一个会话再试。'
     }
   }
+  if (typeof agent.followup !== 'function') {
+    return {
+      kind: 'error',
+      text: '当前 DSH 版本不支持排队提交；请升级 DSH 后再试。'
+    }
+  }
   try {
-    agent.steer(createUserMessage(text))
-    return { kind: 'success', text: successText }
+    const busy = agent.status === 'running'
+    agent.followup(createUserMessage(text))
+    return { kind: 'success', text: busy ? feedback.queued : feedback.started }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { kind: 'error', text: `无法发起命令：${message}` }
@@ -126,7 +143,10 @@ export function apply(ctx) {
         return submit(
           invocation.agent,
           reviewPrompt(invocation.rawInput.trim()),
-          '已发起代码审查，Agent 正在检查未提交的改动。'
+          {
+            queued: '已排队：当前任务结束后执行代码审查，不会中断当前任务。',
+            started: '已发起代码审查，Agent 正在检查未提交的改动。'
+          }
         )
       }
     })
@@ -141,7 +161,10 @@ export function apply(ctx) {
         return submit(
           invocation.agent,
           shipPrompt(invocation.rawInput.trim()),
-          '已发起提交并推送，Agent 正在处理本地改动。'
+          {
+            queued: '已排队：当前任务结束后提交并推送，不会中断当前任务。',
+            started: '已发起提交并推送，Agent 正在处理本地改动。'
+          }
         )
       }
     })

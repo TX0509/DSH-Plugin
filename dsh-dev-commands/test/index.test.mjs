@@ -37,13 +37,20 @@ function loadDefinitions(options = {}) {
   return { definitions, warnings, disposers };
 }
 
-function captureAgent() {
+function captureAgent(options = {}) {
   const messages = [];
+  const steers = [];
   return {
     messages,
+    steers,
     agent: {
-      steer(message) {
+      status: options.status ?? 'idle',
+      followup(message) {
+        if (options.followupError) throw options.followupError;
         messages.push(message);
+      },
+      steer(message) {
+        steers.push(message);
       }
     }
   };
@@ -65,11 +72,12 @@ test('registers /review and /ship with discoverable descriptions', () => {
 test('/review submits a review-only prompt for uncommitted changes', () => {
   const { definitions } = loadDefinitions();
   const review = definitions.find((definition) => definition.name === 'review');
-  const { agent, messages } = captureAgent();
+  const { agent, messages, steers } = captureAgent();
   const result = review.handler({ agent, rawInput: '', attachments: [] });
   assert.equal(result.kind, 'success');
   assert.match(result.text, /代码审查/);
   assert.equal(messages.length, 1);
+  assert.equal(steers.length, 0);
   const message = messages[0];
   assert.equal(message.role, 'user');
   assert.equal(message.source.kind, 'user');
@@ -95,10 +103,12 @@ test('/review carries an optional focus and keeps message ids unique', () => {
 test('/ship defaults to staging everything, committing, and pushing', () => {
   const { definitions } = loadDefinitions();
   const ship = definitions.find((definition) => definition.name === 'ship');
-  const { agent, messages } = captureAgent();
+  const { agent, messages, steers } = captureAgent();
   const result = ship.handler({ agent, rawInput: 'fix: handle empty diff', attachments: [] });
   assert.equal(result.kind, 'success');
   assert.match(result.text, /提交并推送/);
+  assert.equal(messages.length, 1);
+  assert.equal(steers.length, 0);
   const text = messages[0].content[0].text;
   assert.match(text, /所有尚未提交的改动/);
   assert.match(text, /git add -A/);
@@ -108,6 +118,46 @@ test('/ship defaults to staging everything, committing, and pushing', () => {
   assert.match(text, /密钥、凭据、个人隐私数据/);
 });
 
+test('commands queue while the agent is running instead of steering the active turn', () => {
+  const { definitions } = loadDefinitions();
+  for (const name of ['review', 'ship']) {
+    const definition = definitions.find((candidate) => candidate.name === name);
+    const { agent, messages, steers } = captureAgent({ status: 'running' });
+    const result = definition.handler({ agent, rawInput: '', attachments: [] });
+    assert.equal(result.kind, 'success');
+    assert.match(result.text, /已排队/);
+    assert.match(result.text, /不会中断当前任务/);
+    assert.equal(messages.length, 1);
+    assert.equal(steers.length, 0);
+  }
+});
+
+test('queued commands keep their send order', () => {
+  const { definitions } = loadDefinitions();
+  const review = definitions.find((definition) => definition.name === 'review');
+  const ship = definitions.find((definition) => definition.name === 'ship');
+  const { agent, messages, steers } = captureAgent({ status: 'running' });
+  review.handler({ agent, rawInput: '', attachments: [] });
+  ship.handler({ agent, rawInput: '', attachments: [] });
+  assert.equal(messages.length, 2);
+  assert.match(messages[0].content[0].text, /审查当前工作区中尚未提交的改动/);
+  assert.match(messages[1].content[0].text, /提交并推送当前工作区中所有尚未提交的改动/);
+  assert.equal(steers.length, 0);
+});
+
+test('commands start immediately when the agent is idle', () => {
+  const { definitions } = loadDefinitions();
+  for (const name of ['review', 'ship']) {
+    const definition = definitions.find((candidate) => candidate.name === name);
+    const { agent, messages, steers } = captureAgent({ status: 'idle' });
+    const result = definition.handler({ agent, rawInput: '', attachments: [] });
+    assert.equal(result.kind, 'success');
+    assert.doesNotMatch(result.text, /已排队/);
+    assert.equal(messages.length, 1);
+    assert.equal(steers.length, 0);
+  }
+});
+
 test('a missing or rejecting agent becomes a command error, not a crash', () => {
   const { definitions } = loadDefinitions();
   const review = definitions.find((definition) => definition.name === 'review');
@@ -115,9 +165,23 @@ test('a missing or rejecting agent becomes a command error, not a crash', () => 
   assert.equal(missing.kind, 'error');
   assert.match(missing.text, /没有可用的 Agent/);
 
+  // An Agent that only exposes `steer` must not be used: steering would
+  // interrupt the running turn, which is the behavior this command forbids.
+  const steerOnly = review.handler({
+    agent: {
+      status: 'running',
+      steer() {}
+    },
+    rawInput: '',
+    attachments: []
+  });
+  assert.equal(steerOnly.kind, 'error');
+  assert.match(steerOnly.text, /不支持排队提交/);
+
   const rejecting = review.handler({
     agent: {
-      steer() {
+      status: 'idle',
+      followup() {
         throw new Error('inbox locked');
       }
     },

@@ -249,6 +249,8 @@ node --check client.js
 - 如果当前会话能加载 DSH 自带的 `cordis-plugin-development` skill，或能使用 `cordis_inspect_query` / `Slots` / `Theme` 查询，先查真实签名再写代码。
 - 优先做**最小可用版本**：先让插件在一端真实运行，再补双端差异、主题、窄栏和文档；不要先写大量未验证的抽象。
 - 不要在没有用户要求时自动 `git commit` / `git push`，不要改写 git 历史。
+- 提交信息使用**简体中文**，标题格式为 `<type>: <简要说明>`；`type` 使用 `feat`、`fix`、`docs`、`refactor`、`test`、`chore` 等与变更性质匹配的类型，简要说明写清做了什么，不要只写 "update"。
+  - 例：`feat: 添加会话选中文字到对话框插件`、`fix: 修复菜单图标在窄窗口下被裁切`。
 - 不要为了“让测试通过”而删除测试、放宽断言或把真实失败吞掉；失败要暴露并解释。
 - 修改插件包名、目录、patch id、slot 或安装方式时，同步更新 README、INSTALL、安装脚本和测试。
 

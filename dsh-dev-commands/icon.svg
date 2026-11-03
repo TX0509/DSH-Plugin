@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Dev workflow slash commands">
+  <defs>
+    <linearGradient id="dsh-dc-bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3f7df6"/>
+      <stop offset="1" stop-color="#173fae"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#dsh-dc-bg)"/>
+  <rect x="11" y="14" width="42" height="34" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#ffffff" stroke-width="2.5"/>
+  <path d="m20 25 7 7-7 7M31 39h9" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="47" cy="47" r="10" fill="#173fae" stroke="#ffffff" stroke-width="2.5"/>
+  <path d="m42.5 47 3 3 6-6" fill="none" stroke="#8ef0c0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

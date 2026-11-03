@@ -8,9 +8,9 @@ UI/UX 的视觉与交互决策见 [DESIGN.md](DESIGN.md)：本文负责工程约
 
 - 本仓库**只用于开发和维护 DSH 插件 / bundle**，不是 DSH 本体。不要在这里修改 DSH 的安装目录、`app.asar`、Electron 外壳或官方包源码。
 - 每个插件必须是**独立、自包含、可单独安装和卸载**的 npm 包；插件之间不要互相 `import` 源码，也不要依赖本仓库根目录的私有工具。
-- 现有插件是 `dsh-peak-hours-1.0.0/dsh-peak-hours/`，可作为纯 JavaScript、无构建插件的参考实现。
-- 注意：现有 `dsh-peak-hours` 尚未补齐本文要求的 `locale/`、`icon`、`engines.dsh` 等元数据；新插件按本文标准执行，不要把它当成完整合规模板。补齐现有插件也属于允许的改进范围。
-- 新增插件优先使用 `<plugin-name>/` 作为包根；现有发布目录结构 `<name>-<version>/<name>/` 保持不变，除非用户明确要求统一迁移。
+- 现有插件是 `dsh-peak-hours/`，可作为纯 JavaScript、无构建插件的参考实现。
+- 注意：现有 `dsh-peak-hours` 尚未补齐本文要求的 `icon`、`engines.dsh` 等元数据；新插件按本文标准执行，不要把它当成完整合规模板。补齐现有插件也属于允许的改进范围。
+- 新增插件使用 `<plugin-name>/` 作为包根；本仓库现有插件也已统一使用该结构。
 - 不提交 `node_modules`、构建缓存、`.DS_Store`、profile 备份（如 `package.json.bak-*`）、个人绝对路径、密钥或 token。
 
 ## 2. 最高优先级：同时适配 DSH Web 与 DSH Desktop

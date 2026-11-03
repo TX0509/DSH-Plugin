@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Dev Workflow Commands",
+    "description": "Adds /review and /ship to the composer to review uncommitted changes or commit and push everything."
+  }
+}

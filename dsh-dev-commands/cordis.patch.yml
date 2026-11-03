@@ -1,0 +1,8 @@
+# dsh-dev-commands bundle patch.
+#
+# The Host half registers two slash commands through ctx.commands; the Client
+# half adds their menu icons. The Web composer discovers the commands from the
+# Host registry.
+- insert:
+    - id: dev-commands
+      name: 'dsh-dev-commands'

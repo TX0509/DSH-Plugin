@@ -1,7 +1,7 @@
 {
-  "name": "dsh-selection-to-composer",
-  "version": "1.0.0",
-  "description": "Select any text in a DSH conversation and add it to the composer with one click.",
+  "name": "dsh-selection-actions",
+  "version": "1.1.0",
+  "description": "Copy selected text in a DSH conversation, or insert it into the composer with one click.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -30,6 +30,8 @@
     "conversation",
     "composer",
     "selection",
+    "copy",
+    "clipboard",
     "quote"
   ],
   "engines": {

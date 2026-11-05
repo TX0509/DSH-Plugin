@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dsh-selection-to-composer installer.
+ * dsh-selection-actions installer.
  *
  * Links this directory into one or more DSH profiles and registers it as a
  * bundle, without pnpm: a profile plugin is just a package under
@@ -26,7 +26,7 @@ const PLUGIN_NAME = manifest.name;
 const DEP_SPEC = "link:" + PLUGIN_DIR.replace(/\\/g, "/");
 
 function printHelp() {
-  console.log(`dsh-selection-to-composer 安装器
+  console.log(`dsh-selection-actions 安装器
 
 用法:
   node scripts/install.mjs                 安装到 web 和 desktop（没有则退回全部 profile）
@@ -136,10 +136,10 @@ function detectProfiles(profilesRoot) {
 
 function backupManifest(file, dryRun) {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
-  let backup = file + ".bak-selection-to-composer-" + stamp;
+  let backup = file + ".bak-" + PLUGIN_NAME + "-" + stamp;
   let counter = 2;
   while (fs.existsSync(backup)) {
-    backup = file + ".bak-selection-to-composer-" + stamp + "-" + counter;
+    backup = file + ".bak-" + PLUGIN_NAME + "-" + stamp + "-" + counter;
     counter += 1;
   }
   if (!dryRun) fs.copyFileSync(file, backup);

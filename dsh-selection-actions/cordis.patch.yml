@@ -1,8 +1,8 @@
-# dsh-selection-to-composer bundle patch.
+# dsh-selection-actions bundle patch.
 #
 # The Host row is a mount point only; all behavior lives in client.js.
 # Install by adding this package to a profile's dsh.profile.bundles (the
 # bundled install script, or `dsh plugin --profile web add link:<path>`).
 - insert:
-    - id: selection-to-composer
-      name: 'dsh-selection-to-composer'
+    - id: selection-actions
+      name: 'dsh-selection-actions'

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Copy or add selection to composer">
+  <defs>
+    <linearGradient id="dsh-sel-actions-bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4c8dff"/>
+      <stop offset="1" stop-color="#1f5ed6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#dsh-sel-actions-bg)"/>
+  <rect x="13" y="11" width="24" height="28" rx="6"
+        fill="none" stroke="#ffffff" stroke-opacity="0.42" stroke-width="2.5"/>
+  <path d="M24 18h22a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H37l-8 7v-7h-5a6 6 0 0 1-6-6V24a6 6 0 0 1 6-6Z"
+        fill="#ffffff" fill-opacity="0.18" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M35 24v11m0 0 4-4M35 35l-4-4M29 41h12"
+        fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

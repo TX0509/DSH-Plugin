@@ -23,7 +23,7 @@ async function loadBundle() {
   };
   await import(pathToFileURL(clientPath).href + '?case=' + Date.now() + Math.random());
   assert.ok(definition !== null, 'bundle registered with window.__ModuleLoader__');
-  assert.equal(definition.id, 'dsh-selection-to-composer');
+  assert.equal(definition.id, 'dsh-selection-actions');
   const stub = {};
   const factory = definition.factory((specifier) => {
     if (specifier === 'react') return stub;
@@ -197,8 +197,161 @@ test('readSelection is inert outside a browser document', () => {
   assert.equal(api.readSelection(), null);
 });
 
+/** Minimal document stub for the execCommand copy fallback. */
+function fakeDocument(options) {
+  const config = options === undefined ? {} : options;
+  const created = [];
+  const state = { execCommands: 0, focused: 0 };
+  const selection = {
+    rangeCount: 1,
+    removed: 0,
+    added: 0,
+    getRangeAt(index) {
+      assert.equal(index, 0);
+      return {
+        cloneRange() {
+          return { id: 'range' };
+        }
+      };
+    },
+    removeAllRanges() {
+      this.removed += 1;
+    },
+    addRange(range) {
+      this.added += 1;
+      assert.equal(range.id, 'range');
+    }
+  };
+  const body = {
+    appended: [],
+    appendChild(node) {
+      node.parentNode = this;
+      this.appended.push(node);
+    },
+    removeChild(node) {
+      node.parentNode = null;
+      const index = this.appended.indexOf(node);
+      if (index >= 0) this.appended.splice(index, 1);
+    }
+  };
+  const doc = {
+    body,
+    activeElement: { focus() { state.focused += 1; } },
+    getSelection() {
+      return selection;
+    },
+    createElement(tag) {
+      const element = {
+        tagName: tag,
+        value: '',
+        style: {},
+        attributes: {},
+        parentNode: null,
+        setAttribute(name, value) {
+          this.attributes[name] = value;
+        },
+        focus() {},
+        select() { state.selected = true; },
+        setSelectionRange() {}
+      };
+      created.push(element);
+      return element;
+    },
+    execCommand(command) {
+      state.execCommands += 1;
+      state.command = command;
+      return config.execCommand === undefined ? true : config.execCommand;
+    }
+  };
+  return { doc, state, selection, created, body };
+}
+
+function clipboardEnv(clipboard) {
+  const fake = fakeDocument();
+  return { fake, env: { document: fake.doc, navigator: { clipboard } } };
+}
+
+test('copy uses the async clipboard API when the shell exposes it', async () => {
+  let written = null;
+  const { fake, env } = clipboardEnv({
+    writeText(text) {
+      written = text;
+      return Promise.resolve();
+    }
+  });
+  assert.equal(await api.copyText('hello\nworld', env), true);
+  assert.equal(written, 'hello\nworld');
+  assert.equal(fake.state.execCommands, 0);
+  assert.equal(fake.created.length, 0);
+});
+
+test('copy skips the async clipboard API in a non-secure context', async () => {
+  let written = 0;
+  const fake = fakeDocument();
+  const env = {
+    window: { isSecureContext: false },
+    document: fake.doc,
+    navigator: {
+      clipboard: {
+        writeText() {
+          written += 1;
+          return Promise.resolve();
+        }
+      }
+    }
+  };
+  assert.equal(await api.copyText('text', env), true);
+  assert.equal(written, 0);
+  assert.equal(fake.state.execCommands, 1);
+});
+
+test('copy falls back to execCommand when the clipboard API rejects', async () => {
+  const { fake, env } = clipboardEnv({
+    writeText() {
+      return Promise.reject(new Error('denied'));
+    }
+  });
+  assert.equal(await api.copyText('selected', env), true);
+  assert.equal(fake.state.execCommands, 1);
+  assert.equal(fake.state.command, 'copy');
+  assert.equal(fake.created.length, 1);
+  assert.equal(fake.created[0].value, 'selected');
+  assert.equal(fake.created[0].parentNode, null);
+  assert.equal(fake.body.appended.length, 0);
+  // The conversation selection survives the temporary textarea.
+  assert.equal(fake.selection.removed, 1);
+  assert.equal(fake.selection.added, 1);
+  assert.equal(fake.state.focused, 1);
+});
+
+test('copy reports failure instead of throwing when no clipboard path works', async () => {
+  assert.equal(await api.copyText('text', { navigator: {}, document: null }), false);
+
+  const failing = fakeDocument({ execCommand: false });
+  assert.equal(await api.copyText('text', { document: failing.doc, navigator: {} }), false);
+  assert.equal(failing.created[0].parentNode, null);
+
+  const broken = fakeDocument();
+  broken.doc.execCommand = null;
+  assert.equal(await api.copyText('text', { document: broken.doc, navigator: {} }), false);
+});
+
+test('copy ignores empty or non-string input', async () => {
+  let written = 0;
+  const { env } = clipboardEnv({
+    writeText() {
+      written += 1;
+      return Promise.resolve();
+    }
+  });
+  assert.equal(await api.copyText('', env), false);
+  assert.equal(await api.copyText(null, env), false);
+  assert.equal(written, 0);
+});
+
 test('bundle manifest declares the patch, client, locales, icon, and tested DSH range', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, 'package.json'), 'utf8'));
+  assert.equal(manifest.name, 'dsh-selection-actions');
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml');
   assert.equal(manifest.dsh.client.platform, 'web');
   assert.equal(manifest.dsh.manifestVersion, 1);
@@ -211,10 +364,48 @@ test('bundle manifest declares the patch, client, locales, icon, and tested DSH 
   }
 });
 
+test('apply registers one floating group and one composer bridge in the public slots', async () => {
+  let definition = null;
+  globalThis.window = {
+    __ModuleLoader__: {
+      load(next) {
+        definition = next;
+      }
+    }
+  };
+  await import(pathToFileURL(clientPath).href + '?apply=' + Date.now() + Math.random());
+  const factory = definition.factory(() => ({}));
+  const registered = [];
+  const ctx = {
+    effect(run) {
+      return run();
+    },
+    locale: {
+      register() {
+        return function () {};
+      }
+    },
+    slots: {
+      inject(name, register) {
+        return register();
+      },
+      register(slot, Component) {
+        registered.push({ slot: slot.name, id: slot.id, order: slot.order, Component });
+        return function () {};
+      }
+    }
+  };
+  factory.apply(ctx);
+  assert.deepEqual(registered.map((entry) => entry.slot), ['shell.overlay', 'conversation.input.overlay']);
+  assert.deepEqual(registered.map((entry) => entry.id), ['selection-actions', 'selection-actions-bridge']);
+  assert.equal(typeof registered[0].Component, 'function');
+  assert.equal(typeof registered[1].Component, 'function');
+});
+
 test('patch inserts one uniquely named host row', () => {
   const patch = fs.readFileSync(path.join(pluginDir, 'cordis.patch.yml'), 'utf8');
-  assert.match(patch, /id:\s*selection-to-composer/);
-  assert.match(patch, /name:\s*'dsh-selection-to-composer'/);
+  assert.match(patch, /id:\s*selection-actions/);
+  assert.match(patch, /name:\s*'dsh-selection-actions'/);
   assert.equal((patch.match(/- insert:/g) || []).length, 1);
 });
 

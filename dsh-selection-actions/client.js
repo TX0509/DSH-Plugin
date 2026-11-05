@@ -1,13 +1,13 @@
 /*!
- * dsh-selection-to-composer - client half (browser bundle).
+ * dsh-selection-actions - client half (browser bundle).
  *
- * Select text in a conversation, then click the floating pill to insert that
- * text at the composer caret.
+ * Select text in a conversation, then either copy it or insert it at the
+ * composer caret from the floating action group.
  *
  * Two slots cooperate:
- *   - shell.overlay (root scope): the frame-wide floating pill and the text
- *     selection listeners. It is click-through by default, so the pill opts
- *     back into pointer events.
+ *   - shell.overlay (root scope): the frame-wide floating action group and the
+ *     text selection listeners. It is click-through by default, so the group
+ *     opts back into pointer events.
  *   - conversation.input.overlay (session scope): a zero-height bridge that
  *     receives the shell's public `inputActions` face
  *     (`captureInsertion()` + `insertText(text, span)`).
@@ -16,21 +16,29 @@
  * never receives text selected in the main conversation, and vice versa.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-selection-to-composer',
+  id: 'dsh-selection-actions',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
 
-    const LOCALE_NS = 'dsh-selection-to-composer';
+    const LOCALE_NS = 'dsh-selection-actions';
     const ZH = {
+      copy: '复制',
+      copied: '已复制',
+      copyFailed: '复制失败',
       add: '添加到对话框',
       added: '已添加到对话框',
-      failed: '对话框正忙，稍后再试'
+      addFailed: '对话框正忙，稍后再试',
+      actions: '选中文字操作'
     };
     const EN = {
+      copy: 'Copy',
+      copied: 'Copied',
+      copyFailed: 'Copy failed',
       add: 'Add to composer',
       added: 'Added to composer',
-      failed: 'Composer is busy'
+      addFailed: 'Composer is busy',
+      actions: 'Selection actions'
     };
 
     /** Nearest conversation container used both for selection and bridge lookup. */
@@ -136,12 +144,12 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------- position */
 
     /**
-     * Fixed-position geometry for the pill.
+     * Fixed-position geometry for the action group.
      *
-     * The returned `left` is the pill center (the CSS translates it by -50%),
-     * and `top` is the pill's top edge. The pill flips above the selection when
-     * there is no room below, and stays inside the viewport and the desktop
-     * top-chrome clearance.
+     * The returned `left` is the group center (the CSS translates it by -50%),
+     * and `top` is the group's top edge. The group flips above the selection
+     * when there is no room below, and stays inside the viewport and the
+     * desktop top-chrome clearance.
      */
     function computePopoverPosition(rect, viewport) {
       const width = Math.max(0, Number(viewport.width) || 0);
@@ -186,6 +194,139 @@ window.__ModuleLoader__.load({
         if (Number.isFinite(parsed) && parsed > 0) clearance = parsed;
       }
       return { width: window.innerWidth, height: window.innerHeight, topClearance: clearance };
+    }
+
+    /* ------------------------------------------------------------ clipboard */
+
+    const CLIPBOARD_TIMEOUT = 1200;
+
+    /** Resolve `true` when the promise fulfills within `ms`, `false` otherwise. */
+    function settlesWithin(promise, ms) {
+      return new Promise(function (resolve) {
+        let settled = false;
+        let timer = null;
+        function finish(value) {
+          if (settled) return;
+          settled = true;
+          if (timer !== null) clearTimeout(timer);
+          resolve(value);
+        }
+        timer = setTimeout(function () {
+          finish(false);
+        }, ms);
+        Promise.resolve(promise).then(function () {
+          finish(true);
+        }, function () {
+          finish(false);
+        });
+      });
+    }
+
+    /**
+     * Synchronous `execCommand('copy')` fallback.
+     *
+     * Desktop shells that load the GUI from a custom scheme are not always
+     * secure contexts, so `navigator.clipboard` may be missing or rejected.
+     * The selection is saved and restored around the temporary textarea so the
+     * floating group keeps pointing at the same text afterwards.
+     */
+    function copyViaExecCommand(text, doc) {
+      if (doc === null || doc === undefined || typeof doc.createElement !== 'function') return false;
+      const body = doc.body;
+      if (body === null || body === undefined || typeof body.appendChild !== 'function') return false;
+      const area = doc.createElement('textarea');
+      if (area === null || area === undefined) return false;
+
+      const selection = typeof doc.getSelection === 'function' ? doc.getSelection() : null;
+      const ranges = [];
+      if (selection !== null && selection !== undefined) {
+        for (let index = 0; index < selection.rangeCount; index += 1) {
+          try {
+            ranges.push(selection.getRangeAt(index).cloneRange());
+          } catch (error) {
+            // A range can go stale while the copy runs; the copy still works.
+          }
+        }
+      }
+      const previousFocus = doc.activeElement === undefined ? null : doc.activeElement;
+      let copied = false;
+      try {
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.setAttribute('aria-hidden', 'true');
+        area.style.position = 'fixed';
+        area.style.top = '0';
+        area.style.left = '-9999px';
+        area.style.opacity = '0';
+        body.appendChild(area);
+        if (typeof area.focus === 'function') area.focus({ preventScroll: true });
+        if (typeof area.select === 'function') area.select();
+        if (typeof area.setSelectionRange === 'function') area.setSelectionRange(0, area.value.length);
+        copied = doc.execCommand('copy') === true;
+      } catch (error) {
+        copied = false;
+      } finally {
+        try {
+          if (area.parentNode !== null && area.parentNode !== undefined) area.parentNode.removeChild(area);
+        } catch (error) {
+          // The node may already be detached.
+        }
+        if (selection !== null && selection !== undefined) {
+          try {
+            selection.removeAllRanges();
+            for (const range of ranges) selection.addRange(range);
+          } catch (error) {
+            // Losing the selection is not fatal; the text was already copied.
+          }
+        }
+        if (previousFocus !== null && previousFocus !== undefined && typeof previousFocus.focus === 'function') {
+          try {
+            previousFocus.focus({ preventScroll: true });
+          } catch (error) {
+            // Focus restoration is best effort.
+          }
+        }
+      }
+      return copied;
+    }
+
+    /**
+     * Copy text through the async Clipboard API, falling back to
+     * `execCommand('copy')` when the shell does not expose it or rejects the
+     * write. Never throws.
+     */
+    async function copyText(text, env) {
+      if (typeof text !== 'string' || text === '') return false;
+      const source = env === undefined || env === null ? {} : env;
+      const doc = source.document === undefined
+        ? (typeof document === 'undefined' ? null : document)
+        : source.document;
+      const nav = source.navigator === undefined
+        ? (typeof navigator === 'undefined' ? null : navigator)
+        : source.navigator;
+      const win = source.window === undefined
+        ? (typeof window === 'undefined' ? null : window)
+        : source.window;
+      let clipboard = null;
+      try {
+        clipboard = nav === null || nav === undefined ? null : nav.clipboard;
+      } catch (error) {
+        clipboard = null;
+      }
+      // In a non-secure context (some desktop custom schemes) the async API is
+      // unavailable or rejected; go straight to the synchronous fallback so the
+      // copy keeps its user activation.
+      const secure = win === null || win === undefined || win.isSecureContext !== false;
+      if (secure && clipboard !== null && clipboard !== undefined && typeof clipboard.writeText === 'function') {
+        let written = false;
+        try {
+          written = await settlesWithin(clipboard.writeText(text), CLIPBOARD_TIMEOUT);
+        } catch (error) {
+          written = false;
+        }
+        if (written) return true;
+      }
+      return copyViaExecCommand(text, doc);
     }
 
     /* -------------------------------------------------------------- bridges */
@@ -317,14 +458,14 @@ window.__ModuleLoader__.load({
       return h('span', {
         ref: markerRef,
         hidden: true,
-        'data-dsh-selection-to-composer': 'bridge'
+        'data-dsh-selection-actions': 'bridge'
       });
     }
 
-    /* ----------------------------------------------------------------- icon */
+    /* ----------------------------------------------------------------- icons */
 
-    function PillIcon(props) {
-      const common = {
+    function iconProps() {
+      return {
         width: 14,
         height: 14,
         viewBox: '0 0 16 16',
@@ -335,18 +476,36 @@ window.__ModuleLoader__.load({
         strokeLinejoin: 'round',
         'aria-hidden': 'true',
         focusable: 'false',
-        className: 'dscc-icon'
+        className: 'dssa-icon'
       };
-      if (props.state === 'added') {
-        return h('svg', common, h('path', { d: 'M3 8.4 6.3 11.7 13 5' }));
-      }
-      if (props.state === 'failed') {
-        return h('svg', common, [
-          h('circle', { key: 'c', cx: 8, cy: 8, r: 5.7 }),
-          h('path', { key: 'l', d: 'M8 5.2v3.4' }),
-          h('path', { key: 'd', d: 'M8 10.8h.01' })
-        ]);
-      }
+    }
+
+    function successGlyph() {
+      return h('path', { d: 'M3 8.4 6.3 11.7 13 5' });
+    }
+
+    function failureGlyph() {
+      return [
+        h('circle', { key: 'c', cx: 8, cy: 8, r: 5.7 }),
+        h('path', { key: 'l', d: 'M8 5.2v3.4' }),
+        h('path', { key: 'd', d: 'M8 10.8h.01' })
+      ];
+    }
+
+    function CopyIcon(props) {
+      const common = iconProps();
+      if (props.state === 'copied') return h('svg', common, successGlyph());
+      if (props.state === 'failed') return h('svg', common, failureGlyph());
+      return h('svg', common, [
+        h('rect', { key: 'front', x: 5.4, y: 5.4, width: 9.2, height: 9.2, rx: 1.5 }),
+        h('path', { key: 'back', d: 'M2.7 10.6c-.72 0-1.3-.58-1.3-1.3V2.7c0-.72.58-1.3 1.3-1.3h6.6c.72 0 1.3.58 1.3 1.3' })
+      ]);
+    }
+
+    function AddIcon(props) {
+      const common = iconProps();
+      if (props.state === 'added') return h('svg', common, successGlyph());
+      if (props.state === 'failed') return h('svg', common, failureGlyph());
       return h('svg', common, [
         h('path', { key: 'bubble', d: 'M13.4 8.2a5.2 5.2 0 0 1-5.2 5.2H4.1L2 15V9.9a5.2 5.2 0 0 1 5.2-5.2h1' }),
         h('path', { key: 'arrow', d: 'M11.6 2v5' }),
@@ -360,11 +519,15 @@ window.__ModuleLoader__.load({
       const bridgesNow = useBridges();
       const locale = props.locale;
       const [tip, setTip] = React.useState(null);
-      const pillRef = React.useRef(null);
+      const groupRef = React.useRef(null);
       const checkTimer = React.useRef(null);
       const hideTimer = React.useRef(null);
+      const copyTimer = React.useRef(null);
       const ignoreEmptySelectionUntil = React.useRef(0);
-      const pointerInPill = React.useRef(false);
+      const suspendChecksUntil = React.useRef(0);
+      const pointerInGroup = React.useRef(false);
+      const mounted = React.useRef(true);
+      const copying = React.useRef(false);
 
       const translate = locale !== null && locale !== undefined && typeof locale.bind === 'function'
         ? locale.bind(LOCALE_NS)
@@ -390,6 +553,13 @@ window.__ModuleLoader__.load({
         }
       }
 
+      function clearCopyTimer() {
+        if (copyTimer.current !== null) {
+          clearTimeout(copyTimer.current);
+          copyTimer.current = null;
+        }
+      }
+
       function hideAfter(delay) {
         clearHideTimer();
         hideTimer.current = setTimeout(function () {
@@ -400,8 +570,8 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         // A bridge appearing or disappearing belongs to a session switch or a
-        // composer unmount; a pill anchored to a session with no composer left
-        // is stale, while another session's pill may stay.
+        // composer unmount; a group anchored to a session with no composer left
+        // is stale, while another session's group may stay.
         setTip(function (current) {
           if (current === null) return null;
           return resolveBridge(bridgesNow, current.scope) === null ? null : current;
@@ -411,13 +581,15 @@ window.__ModuleLoader__.load({
         }
 
         function check() {
+          if (Date.now() < suspendChecksUntil.current) return;
           const found = readSelection();
           if (found === null) {
             // Our own successful insertion clears the document selection; do
-            // not let that clear the success pill before its timer fires.
+            // not let that clear the success state before its timer fires.
             if (Date.now() < ignoreEmptySelectionUntil.current) return;
             setTip(function (current) {
-              return current !== null && current.status === 'idle' ? null : current;
+              const busy = current !== null && (current.status !== 'idle' || current.copyStatus !== 'idle');
+              return busy ? current : null;
             });
             return;
           }
@@ -430,7 +602,7 @@ window.__ModuleLoader__.load({
           const viewport = viewportOf();
           viewport.left = scopeRect.left;
           viewport.right = scopeRect.right;
-          // Keep the pill out of the composer card when the selection sits at
+          // Keep the group out of the composer card when the selection sits at
           // the bottom of the scroll area.
           const sessionRoot = found.scope.closest('[data-conversation-session]') || found.scope;
           const composerSeat = sessionRoot.querySelector('[data-composer-seat]');
@@ -442,7 +614,8 @@ window.__ModuleLoader__.load({
             text: found.text,
             scope: found.scope,
             position: computePopoverPosition(found.rect, viewport),
-            status: 'idle'
+            status: 'idle',
+            copyStatus: 'idle'
           });
         }
 
@@ -459,8 +632,8 @@ window.__ModuleLoader__.load({
         }
 
         function onSettled() {
-          if (pointerInPill.current) {
-            pointerInPill.current = false;
+          if (pointerInGroup.current) {
+            pointerInGroup.current = false;
             return;
           }
           schedule(0);
@@ -477,30 +650,34 @@ window.__ModuleLoader__.load({
           if (event.key !== 'Escape') return;
           clearCheckTimer();
           clearHideTimer();
+          clearCopyTimer();
           setTip(null);
         }
 
         function onPointerDown(event) {
-          const pill = pillRef.current;
-          if (pill !== null && pill.contains(event.target)) {
-            pointerInPill.current = true;
+          const group = groupRef.current;
+          if (group !== null && group.contains(event.target)) {
+            pointerInGroup.current = true;
             return;
           }
           clearCheckTimer();
           clearHideTimer();
-          pointerInPill.current = false;
+          clearCopyTimer();
+          pointerInGroup.current = false;
           setTip(null);
         }
 
         function onScroll() {
           clearCheckTimer();
           clearHideTimer();
+          clearCopyTimer();
           setTip(null);
         }
 
         function onResize() {
           clearCheckTimer();
           clearHideTimer();
+          clearCopyTimer();
           setTip(null);
         }
 
@@ -519,6 +696,7 @@ window.__ModuleLoader__.load({
         return function () {
           clearCheckTimer();
           clearHideTimer();
+          clearCopyTimer();
           document.removeEventListener('selectionchange', onSelectionChange);
           document.removeEventListener('mouseup', onSettled, true);
           document.removeEventListener('keyup', onKeyUp, true);
@@ -530,13 +708,56 @@ window.__ModuleLoader__.load({
       }, [bridgesNow]);
 
       React.useEffect(function () {
+        mounted.current = true;
         return function () {
+          mounted.current = false;
           if (checkTimer.current !== null) clearTimeout(checkTimer.current);
           if (hideTimer.current !== null) clearTimeout(hideTimer.current);
+          if (copyTimer.current !== null) clearTimeout(copyTimer.current);
         };
       }, []);
 
-      function activate(event) {
+      /** Prefer the selection that is still present at click time. */
+      function currentText() {
+        const current = readSelection();
+        if (current !== null && tip !== null && current.scope === tip.scope) return current.text;
+        return tip === null ? '' : tip.text;
+      }
+
+      function copyNow(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (tip === null || tip.copyStatus !== 'idle' || copying.current) return;
+        const text = currentText();
+        const scope = tip.scope;
+        copying.current = true;
+        // Editing the selection while the write is in flight must not hide the
+        // group; the write itself can clear and restore the selection.
+        suspendChecksUntil.current = Date.now() + 900;
+        copyText(text).then(function (copied) {
+          copying.current = false;
+          if (!mounted.current) return;
+          // The execCommand fallback restores the selection, which fires
+          // `selectionchange`; do not let that reset the transient label.
+          suspendChecksUntil.current = Date.now() + 320;
+          setTip(function (current) {
+            if (current === null) return null;
+            if (current.scope !== scope || current.text !== text) return current;
+            return Object.assign({}, current, { copyStatus: copied ? 'copied' : 'failed' });
+          });
+          clearCopyTimer();
+          copyTimer.current = setTimeout(function () {
+            copyTimer.current = null;
+            setTip(function (current) {
+              if (current === null) return null;
+              if (current.copyStatus === 'idle') return current;
+              return Object.assign({}, current, { copyStatus: 'idle' });
+            });
+          }, copied ? 1500 : 2600);
+        });
+      }
+
+      function addNow(event) {
         event.preventDefault();
         event.stopPropagation();
         if (tip === null || tip.status !== 'idle') return;
@@ -546,12 +767,7 @@ window.__ModuleLoader__.load({
           hideAfter(2600);
           return;
         }
-        // The overlay updates on a short debounce; prefer the selection that
-        // is still present at click time when it belongs to the same session.
-        let text = tip.text;
-        const current = readSelection();
-        if (current !== null && current.scope === tip.scope) text = current.text;
-        const inserted = bridge.insert(text);
+        const inserted = bridge.insert(currentText());
         if (inserted) {
           ignoreEmptySelectionUntil.current = Date.now() + 600;
           try {
@@ -570,58 +786,94 @@ window.__ModuleLoader__.load({
 
       if (tip === null) return null;
 
-      const label = tip.status === 'added'
+      const copyLabel = tip.copyStatus === 'copied'
+        ? translate('copied')
+        : tip.copyStatus === 'failed'
+          ? translate('copyFailed')
+          : translate('copy');
+      const addLabel = tip.status === 'added'
         ? translate('added')
         : tip.status === 'failed'
-          ? translate('failed')
+          ? translate('addFailed')
           : translate('add');
+      const announcement = tip.copyStatus === 'copied'
+        ? copyLabel
+        : tip.copyStatus === 'failed'
+          ? copyLabel
+          : tip.status === 'added' || tip.status === 'failed'
+            ? addLabel
+            : '';
+
+      function keepSelection(event) {
+        // Keep the conversation selection (and the composer's own caret)
+        // while the pointer activates an action.
+        event.preventDefault();
+      }
 
       return h('div', {
-        className: 'dscc-anchor',
+        className: 'dssa-anchor',
         style: { left: tip.position.left + 'px', top: tip.position.top + 'px' }
       }, [
-        h('button', {
-          key: 'button',
-          ref: pillRef,
-          type: 'button',
-          className: 'dscc-pill',
-          'data-state': tip.status,
-          'aria-label': label,
-          onMouseDown: function (event) {
-            // Keep the conversation selection (and the composer's own caret)
-            // while the pointer activates the pill.
-            event.preventDefault();
-          },
-          onClick: activate
+        h('div', {
+          key: 'group',
+          ref: groupRef,
+          className: 'dssa-group',
+          role: 'group',
+          'aria-label': translate('actions')
         }, [
-          h(PillIcon, { key: 'icon', state: tip.status }),
-          h('span', { key: 'label', className: 'dscc-label' }, label)
+          h('button', {
+            key: 'copy',
+            type: 'button',
+            className: 'dssa-action',
+            'data-action': 'copy',
+            'data-state': tip.copyStatus,
+            onMouseDown: keepSelection,
+            onClick: copyNow
+          }, [
+            h(CopyIcon, { key: 'icon', state: tip.copyStatus }),
+            h('span', { key: 'label', className: 'dssa-label' }, copyLabel)
+          ]),
+          h('button', {
+            key: 'add',
+            type: 'button',
+            className: 'dssa-action',
+            'data-action': 'add',
+            'data-state': tip.status,
+            onMouseDown: keepSelection,
+            onClick: addNow
+          }, [
+            h(AddIcon, { key: 'icon', state: tip.status }),
+            h('span', { key: 'label', className: 'dssa-label' }, addLabel)
+          ])
         ]),
         h('span', {
           key: 'live',
-          className: 'dscc-sr-only',
+          className: 'dssa-sr-only',
           role: 'status'
-        }, tip.status === 'idle' ? '' : label)
+        }, announcement)
       ]);
     }
 
     /* ---------------------------------------------------------------- styles */
 
     const CSS = [
-      '.dscc-anchor{position:fixed;z-index:20;pointer-events:none;transform:translateX(-50%);-webkit-app-region:no-drag}',
-      '.dscc-pill{pointer-events:auto;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:30px;min-width:120px;max-width:220px;max-width:min(220px,calc(100vw - 16px));padding:0 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;corner-shape:round;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv2,none);font-family:inherit;font-size:12px;line-height:18px;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-app-region:no-drag;appearance:none;transition:background-color .12s ease,border-color .12s ease}',
-      '.dscc-pill:hover{background:var(--dsw-alias-interactive-bg-hover,var(--dsw-alias-bg-layer-2));border-color:var(--dsw-alias-border-l2)}',
-      '.dscc-pill:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:2px}',
-      '.dscc-pill:active{transform:translateY(.5px)}',
-      '.dscc-pill[data-state="added"] .dscc-icon{color:var(--dsw-alias-state-success-primary)}',
-      '.dscc-pill[data-state="failed"] .dscc-icon{color:var(--dsw-alias-state-error-primary)}',
-      '.dscc-icon{flex:none;display:block}',
-      '.dscc-label{overflow:hidden;text-overflow:ellipsis}',
-      '.dscc-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;pointer-events:none}',
-      '@media (prefers-reduced-motion: reduce){.dscc-pill{transition:none}.dscc-pill:active{transform:none}}'
+      '.dssa-anchor{position:fixed;z-index:20;pointer-events:none;transform:translateX(-50%);-webkit-app-region:no-drag}',
+      '.dssa-group{pointer-events:auto;display:inline-flex;align-items:stretch;box-sizing:border-box;height:30px;max-width:min(220px,calc(100vw - 16px));border:1px solid var(--dsw-alias-border-l1);border-radius:999px;corner-shape:round;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1));box-shadow:var(--dsw-shadow-lv2,none);overflow:hidden;-webkit-app-region:no-drag;transition:border-color .12s ease}',
+      '.dssa-group:focus-within{border-color:var(--dsw-alias-border-l2)}',
+      '.dssa-action{display:inline-flex;align-items:center;gap:6px;min-width:0;height:100%;padding:0 11px;border:0;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:12px;line-height:18px;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-app-region:no-drag;appearance:none;transition:background-color .12s ease}',
+      '.dssa-action + .dssa-action{border-left:1px solid var(--dsw-alias-border-l1)}',
+      '.dssa-action:hover{background:var(--dsw-alias-interactive-bg-hover,var(--dsw-alias-bg-layer-2))}',
+      '.dssa-action:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:-2px}',
+      '.dssa-action:active{background:var(--dsw-alias-interactive-bg-active,var(--dsw-alias-bg-layer-2))}',
+      '.dssa-action[data-state="copied"] .dssa-icon,.dssa-action[data-state="added"] .dssa-icon{color:var(--dsw-alias-state-success-primary)}',
+      '.dssa-action[data-state="failed"] .dssa-icon{color:var(--dsw-alias-state-error-primary)}',
+      '.dssa-icon{flex:none;display:block}',
+      '.dssa-label{overflow:hidden;text-overflow:ellipsis}',
+      '.dssa-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;pointer-events:none}',
+      '@media (prefers-reduced-motion: reduce){.dssa-group,.dssa-action{transition:none}}'
     ].join('');
 
-    const STYLE_ATTR = 'data-dsh-selection-to-composer';
+    const STYLE_ATTR = 'data-dsh-selection-actions';
 
     function installStyles() {
       if (typeof document === 'undefined' || document.head === null || document.head === undefined) {
@@ -653,37 +905,37 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       ctx.effect(function () {
         return installStyles();
-      }, 'dsh-selection-to-composer: styles');
+      }, 'dsh-selection-actions: styles');
 
       ctx.effect(function () {
         return registerLocale(ctx, 'zh', ZH);
-      }, 'dsh-selection-to-composer: locale zh');
+      }, 'dsh-selection-actions: locale zh');
 
       ctx.effect(function () {
         return registerLocale(ctx, 'en', EN);
-      }, 'dsh-selection-to-composer: locale en');
+      }, 'dsh-selection-actions: locale en');
 
       ctx.effect(function () {
         return ctx.slots.inject('shell.overlay', function () {
           return ctx.slots.register({
             name: 'shell.overlay',
-            id: 'selection-to-composer',
+            id: 'selection-actions',
             order: 30
           }, function OverlaySlot(props) {
             return h(SelectionOverlay, Object.assign({}, props, { locale: ctx.locale }));
           });
         });
-      }, 'dsh-selection-to-composer: overlay slot');
+      }, 'dsh-selection-actions: overlay slot');
 
       ctx.effect(function () {
         return ctx.slots.inject('conversation.input.overlay', function () {
           return ctx.slots.register({
             name: 'conversation.input.overlay',
-            id: 'selection-to-composer-bridge',
+            id: 'selection-actions-bridge',
             order: 90
           }, ComposerBridge);
         });
-      }, 'dsh-selection-to-composer: composer bridge slot');
+      }, 'dsh-selection-actions: composer bridge slot');
     }
 
     return {
@@ -697,11 +949,14 @@ window.__ModuleLoader__.load({
         POPOVER_HEIGHT,
         POPOVER_GAP,
         POPOVER_MARGIN,
+        CLIPBOARD_TIMEOUT,
         normalizeSelectionText,
         computePopoverPosition,
         readSelection,
         createBridge,
-        resolveBridge
+        resolveBridge,
+        copyText,
+        copyViaExecCommand
       }
     };
   }

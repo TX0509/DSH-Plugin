@@ -9,15 +9,31 @@ import type { HostContext, IndexInjection } from '../shared/dsh'
 import {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_PATH,
   TOKEN_GLOBAL,
   TOKEN_HEADER,
 } from '../shared/routes'
 
 import { hostLogger } from './adapters/logger'
 import { withWebServer } from './adapters/web-server'
+import { contains, isFilesystemRoot, safeResolve } from './paths'
 
-// Re-exported for tests and for the media handler that shares this wire contract.
-export { MEDIA_PATH, PING_PATH, TOKEN_GLOBAL } from '../shared/routes'
+// Re-exported for tests and for the routes that share this wire contract.
+export { MEDIA_PATH, PING_PATH, PROJECTS_PATH, TOKEN_GLOBAL } from '../shared/routes'
+export { isFilesystemRoot, safeResolve } from './paths'
+export { migrateProject } from './projects/migrate'
+export { ASPECTS, FPS_VALUES, SCHEMA_VERSION, validateProject } from './projects/schema'
+export {
+  PROJECT_FILE,
+  PROJECT_SUBDIRS,
+  createProject,
+  defaultScene,
+  ensureProjectRoot,
+  listProjects,
+  readProject,
+  slugFor,
+  writeProject,
+} from './projects/store'
 
 const MIME: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -34,26 +50,43 @@ const MIME: Record<string, string> = {
   '.json': 'application/json; charset=utf-8',
 }
 
-/** Control characters plus the characters Windows reserves in file names. */
-const FORBIDDEN = /[<>:"|?*\u0000-\u001f]/u
-const MAX_SEGMENTS = 5
-const MAX_SEGMENT_LENGTH = 128
-
 export interface PluginConfig {
   mediaRoot?: string
+  /**
+   * Required for project features. When unset the plugin still mounts the
+   * media route (M0 behaviour) but project features stay disabled, so nothing
+   * is ever written to an unexpected drive.
+   */
+  projectsRoot?: string
+  /** Optional renders copy target; never served by a route. */
+  exportDir?: string
   requireToken?: boolean
 }
 
+/** `ready` = usable; `unset` = not configured; `invalid` = configured but unusable. */
+export type ProjectsState = 'ready' | 'unset' | 'invalid'
+
+export interface ProjectsConfig {
+  state: ProjectsState
+  root?: string
+  /** Local-only diagnostic (may contain an absolute path); never sent to a page. */
+  detail?: string
+}
+
 interface RouteContext {
-  mediaRoot: string
+  root: string
   token: string
   requireToken: boolean
 }
 
 interface HandlerOptions {
-  mediaRoot: string
+  root: string
   token: string
   requireToken?: boolean
+}
+
+interface PingOptions extends HandlerOptions {
+  projects?: ProjectsState
 }
 
 type RangeBounds = { start: number; end: number }
@@ -66,38 +99,30 @@ export function defaultMediaRoot(): string {
   return path.join(home, 'cache', 'dsh-video-workbench', 'media')
 }
 
-/** A configured root of `C:\` or `/` would expose the whole drive. */
-export function isFilesystemRoot(candidate: string): boolean {
-  const resolved = path.resolve(candidate)
-  return path.parse(resolved).root === resolved
-}
-
-/** Case-insensitive on Windows; exact elsewhere. */
-function contains(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child)
-  if (relative === '') return false
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return false
-  return true
-}
-
 /**
- * Resolve a client-supplied relative name under `root`.
- * Accepts Unicode names, rejects traversal, absolute paths, hidden files,
- * Windows-reserved characters, and names that would escape `root`.
+ * Resolve and create `projectsRoot`.
+ * A filesystem root would expose a whole drive, so it is refused rather than
+ * silently falling back to another location: the user picked the path.
  */
-export function safeResolve(root: string, relative: string | null | undefined): string | undefined {
-  const raw = String(relative ?? '')
-  if (raw.length === 0 || raw.length > 512) return undefined
-  const parts = raw.split(/[\\/]+/u).filter((part) => part.length > 0)
-  if (parts.length === 0 || parts.length > MAX_SEGMENTS) return undefined
-  for (const part of parts) {
-    if (part.length > MAX_SEGMENT_LENGTH) return undefined
-    if (part.startsWith('.') || part.endsWith('.') || part.endsWith(' ')) return undefined
-    if (FORBIDDEN.test(part)) return undefined
+export function resolveProjectsRoot(configured: string | undefined): ProjectsConfig {
+  if (typeof configured !== 'string' || configured.trim().length === 0) {
+    return { state: 'unset' }
   }
-  const resolved = path.resolve(root, ...parts)
-  return contains(root, resolved) ? resolved : undefined
+  const candidate = path.resolve(configured.trim())
+  if (isFilesystemRoot(candidate)) {
+    return { state: 'invalid', detail: `projectsRoot "${candidate}" 是盘符根目录，项目功能已禁用` }
+  }
+  try {
+    fs.mkdirSync(candidate, { recursive: true })
+    if (!fs.statSync(candidate).isDirectory()) {
+      return { state: 'invalid', detail: `projectsRoot 不是目录: ${candidate}` }
+    }
+  } catch (error) {
+    return { state: 'invalid', detail: `projectsRoot 不可用: ${candidate}（${String(error)}）` }
+  }
+  return { state: 'ready', root: candidate }
 }
+
 
 /** Parse one `Range: bytes=` header. Returns undefined (no range), 'invalid', or bounds. */
 export function parseRange(header: string | undefined, size: number): ParsedRange {
@@ -198,13 +223,13 @@ function serveMedia(request: IncomingMessage, response: ServerResponse, context:
 
   const url = new URL(request.url ?? '/', 'http://placeholder.invalid')
   const relative = url.searchParams.get('path') ?? ''
-  const absolute = safeResolve(context.mediaRoot, relative)
+  const absolute = safeResolve(context.root, relative)
   if (absolute === undefined) {
     sendJson(response, 400, { error: 'invalid-path' })
     return
   }
 
-  const real = realFileInside(context.mediaRoot, absolute)
+  const real = realFileInside(context.root, absolute)
   if (real === undefined) {
     sendJson(response, 404, { error: 'not-found' })
     return
@@ -269,23 +294,27 @@ function serveMedia(request: IncomingMessage, response: ServerResponse, context:
   stream.pipe(response)
 }
 
-/** Shared request context for the two route handlers. */
+/** Shared request context for the route handlers. */
 function createContext(options: HandlerOptions): RouteContext {
   return {
-    mediaRoot: path.resolve(options.mediaRoot),
+    root: path.resolve(options.root),
     token: options.token,
     requireToken: options.requireToken !== false,
   }
 }
 
-/** Build the media route handler; exported so tests can drive it over real HTTP. */
-export function createMediaHandler(options: HandlerOptions): (request: IncomingMessage, response: ServerResponse) => void {
+/**
+ * Build a read-only file route handler (Range + ETag).
+ * Exported so tests can drive it over real HTTP; used by `/media` and
+ * `/projects` alike, the only difference is the root directory.
+ */
+export function createFileHandler(options: HandlerOptions): (request: IncomingMessage, response: ServerResponse) => void {
   const context = createContext(options)
   return (request, response) => serveMedia(request, response, context)
 }
 
 /** Build the health route handler. */
-export function createPingHandler(options: HandlerOptions): (request: IncomingMessage, response: ServerResponse) => void {
+export function createPingHandler(options: PingOptions): (request: IncomingMessage, response: ServerResponse) => void {
   const context = createContext(options)
   return (request, response) => {
     if (context.requireToken && !tokenEquals(readToken(request), context.token)) {
@@ -299,8 +328,9 @@ export function createPingHandler(options: HandlerOptions): (request: IncomingMe
     }
     sendJson(response, 200, {
       ok: true,
-      mediaRootExists: fs.existsSync(context.mediaRoot),
+      mediaRootExists: fs.existsSync(context.root),
       requireToken: context.requireToken,
+      projects: options.projects ?? 'unset',
     })
   }
 }
@@ -326,6 +356,11 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
     logger.error(`[video-workbench] mediaRoot "${mediaRoot}" is a filesystem root; falling back to ${fallback}`)
     mediaRoot = fallback
   }
+  const projects = resolveProjectsRoot(config.projectsRoot)
+  if (projects.state === 'invalid') logger.error(`[video-workbench] ${String(projects.detail)}`)
+  const exportDir = typeof config.exportDir === 'string' && config.exportDir.trim().length > 0
+    ? path.resolve(config.exportDir.trim())
+    : undefined
   const requireToken = config.requireToken !== false
   const token = randomBytes(24).toString('base64url')
 
@@ -337,15 +372,33 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
     server.registerRoute({
       kind: 'exact',
       path: PING_PATH,
-      handler: createPingHandler({ mediaRoot, token, requireToken }),
+      handler: createPingHandler({
+        root: mediaRoot,
+        token,
+        requireToken,
+        projects: projects.state,
+      }),
     }, 'video-workbench:ping')
 
     server.registerRoute({
       kind: 'prefix',
       path: MEDIA_PATH,
-      handler: createMediaHandler({ mediaRoot, token, requireToken }),
+      handler: createFileHandler({ root: mediaRoot, token, requireToken }),
     }, 'video-workbench:media')
+
+    // Project files are only reachable when `projectsRoot` is usable; the
+    // media route keeps working either way.
+    if (projects.root !== undefined) {
+      server.registerRoute({
+        kind: 'prefix',
+        path: PROJECTS_PATH,
+        handler: createFileHandler({ root: projects.root, token, requireToken }),
+      }, 'video-workbench:projects')
+    }
   })
 
   logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`)
+  logger.info(`[video-workbench] projects: ${projects.state}`
+    + `${projects.root === undefined ? '' : ` (${projects.root})`}`
+    + `${exportDir === undefined ? '' : `, export: ${exportDir}`}`)
 }

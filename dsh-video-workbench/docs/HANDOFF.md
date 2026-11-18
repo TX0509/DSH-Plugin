@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，对应提交 `refactor: 抽取 DSH 适配层`（M1 步骤 2 完成）。
+> 最后更新：2026-11-19，对应提交 `feat: 加入项目模型与项目路由`（M1 步骤 3 完成）。
 
 ## 1. 这是什么
 
@@ -10,7 +10,7 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M0 完成；M1 步骤 1–2 完成**（下一步：步骤 3 项目模型与项目路由）
+- 当前阶段：**M0 完成；M1 步骤 1–3 完成**（下一步：步骤 4 `video_selfcheck`）
 - 版本：`0.0.4`；分支 `main`；远端 `origin/main` 与本地同步
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.3`
 
@@ -40,14 +40,16 @@ node scripts/install.mjs --check
 
 ```text
 dsh-video-workbench/
-├── src/host/index.ts        # 媒体路由、token、Range/ETag、路径校验、apply 组装
+├── src/host/index.ts        # apply 组装、ping/file 路由、token、Range/ETag
+├── src/host/paths.ts        # safeResolve / isFilesystemRoot / contains
 ├── src/host/adapters/       # web-server.ts（registerRoute / onIndexInject + owner 过滤）、logger.ts
+├── src/host/projects/       # schema.ts（v1 校验）、migrate.ts、store.ts（原子写、slug、CRUD）
 ├── src/client/index.tsx     # ▶ 入口、浮层、播放器、错误重试
 ├── src/client/adapters/     # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）、loader.ts
 ├── src/shared/              # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js     # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
-├── test/{range,media,guard}.test.mjs   # 36 项
+├── test/{range,media,guard,projects}.test.mjs   # 53 项
 ├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
@@ -92,7 +94,7 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 
 工作区目录已建好（`video-projects/`、`video-exports/`；`spike-m0/` 是 M0 渲染测试遗留）。
 
-## 6. 接下来做什么（M1 步骤 3–5）
+## 6. 接下来做什么（M1 步骤 4–5）
 
 详细方案见 `docs/M1-PLAN.md`。按顺序做，每步一个提交，每步结束 `node scripts/verify.mjs` 必须全绿。
 
@@ -112,16 +114,27 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 验收：`node --test` 仍为 36 项全绿；`node scripts/verify.mjs` 全绿。
 **未做**：客户端 bundle 有变化，但只在静态层面校验，**尚未实机重启验证**（步骤 5 一并做）。
 
-### 步骤 3：项目模型与项目路由（0.75 人日）
+### 步骤 3：项目模型与项目路由 ✅ 已完成
 
-- 新增 `src/host/projects/{schema,migrate,store}.ts`：
-  - `project.json` v1（字段表见 M1-PLAN 第 5.1 节），手写校验器，返回 `{ ok, project }` / `{ ok: false, errors }`；
-  - 原子写（临时文件 + rename）；`read` 先迁移再校验；
-  - slug 时间戳生成，`id` 与目录名一致。
-- `Config` 增加 `projectsRoot`（必填）、`exportDir`（可选）。
-- 新增路由 `/api/video-workbench/projects`（与 `/media` 共用 token，只读、支持 Range）。
-- 测试：schema 合法/非法、迁移、原子写、路由 401/206/404/穿越。
-- 提交：`feat: 加入项目模型与项目路由`
+提交 `feat: 加入项目模型与项目路由`：
+
+- `src/host/projects/schema.ts`：`project.json` v1 类型 + 手写校验器 `validateProject()`，
+  返回 `{ ok, project }` 或 `{ ok: false, errors }`；错误信息可直接展示给用户；
+  `aspect`/`voice`/`captions` 有文档化默认值，asset 路径统一规范成 `/` 分隔并拒绝穿越、绝对路径、隐藏名。
+- `src/host/projects/migrate.ts`：`migrateProject()`，缺 `schemaVersion` 视为 v1，未知/未来版本报错。
+- `src/host/projects/store.ts`：`createProject` / `readProject` / `writeProject` / `listProjects` /
+  `slugFor` / `defaultScene` / `ensureProjectRoot`；原子写（`.project.json.tmp-*` + rename，失败清理）；
+  slug 为本地时间 `YYYYMMDD-HHmmss`，同秒冲突加 `-2`；`read` 先迁移再校验，并校验 id 与目录名一致。
+- `Config` 新增 `projectsRoot`（未配置时项目功能禁用，媒体路由照旧）、`exportDir`（暂只记录，M2 用）。
+- 新增 `/api/video-workbench/projects` 前缀路由：与 `/media` 同一个 `createFileHandler`（只读、Range/ETag、
+  同一 token）。`projectsRoot` 为 `unset`/`invalid` 时不挂载该路由；`invalid` 只写日志，不影响启动。
+- `ping` 新增 `projects` 字段（`ready` / `unset` / `invalid`），不返回绝对路径。
+- `src/host/paths.ts`：`safeResolve` / `isFilesystemRoot` / `contains` 从 `index.ts` 抽出，路由与 store 共用。
+- 测试新增 17 项（`test/projects.test.mjs`），总数 **53**；`verify` 全绿。
+- 导出到 `index.js` 的测试面：`validateProject`、`migrateProject`、`schemaVersion`、`slugFor`、
+  `createProject`、`readProject`、`writeProject`、`listProjects`、`defaultScene`、`ensureProjectRoot`。
+
+**未做**：客户端仍未使用项目路由（M2 起接）；`exportDir` 尚无写入逻辑；同样**未实机重启验证**（步骤 5）。
 
 ### 步骤 4：video_selfcheck（0.25 人日）
 
@@ -151,7 +164,7 @@ cd dsh-video-workbench
 node scripts/verify.mjs
 ```
 
-全绿说明环境正常，直接从「步骤 3」开始；任何一步失败，先修 `verify` 再动业务代码。
+全绿说明环境正常，直接从「步骤 4」开始；任何一步失败，先修 `verify` 再动业务代码。
 
 ## 9. 已知未决/可选
 

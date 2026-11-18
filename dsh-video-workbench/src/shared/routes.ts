@@ -13,5 +13,8 @@ export const TOKEN_HEADER = 'x-dsh-video-workbench-token'
 /** Exact route reporting plugin readiness. */
 export const PING_PATH = '/api/video-workbench/ping'
 
-/** Prefix route serving read-only media and, from M1 step 3, project files. */
+/** Prefix route serving read-only media files. */
 export const MEDIA_PATH = '/api/video-workbench/media'
+
+/** Prefix route serving read-only project files (same token as media). */
+export const PROJECTS_PATH = '/api/video-workbench/projects'

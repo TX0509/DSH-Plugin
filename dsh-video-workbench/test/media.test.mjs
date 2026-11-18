@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { createMediaHandler, createPingHandler } from '../index.js'
+import { createFileHandler, createPingHandler } from '../index.js'
 
 const TOKEN = 'test-token-value'
 
@@ -27,10 +27,10 @@ function setup(options = {}) {
 
   const server = createServer((request, response) => {
     if (request.url?.startsWith('/api/video-workbench/media')) {
-      createMediaHandler({ mediaRoot: root, token: TOKEN, ...options })(request, response)
+      createFileHandler({ root, token: TOKEN, ...options })(request, response)
       return
     }
-    createPingHandler({ mediaRoot: root, token: TOKEN, ...options })(request, response)
+    createPingHandler({ root, token: TOKEN, ...options })(request, response)
   })
   return { root, outside, linked, server }
 }

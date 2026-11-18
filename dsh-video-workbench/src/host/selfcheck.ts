@@ -109,7 +109,7 @@ async function checkRouteMounted(
   observed: Observed,
 ): Promise<SelfcheckCheck> {
   if (origin === undefined) {
-    return fail('routeMounted', 'webServer.getOrigin() 不可用，无法探测路由')
+    return fail('routeMounted', 'Host 尚未提供监听地址（origin），无法探测路由')
   }
   const url = `${origin}${PING_PATH}`
   try {

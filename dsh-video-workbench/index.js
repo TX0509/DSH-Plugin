@@ -532,7 +532,7 @@ async function discard(response) {
 }
 async function checkRouteMounted(options, fetchImpl, timeoutMs, origin, observed) {
   if (origin === void 0) {
-    return fail("routeMounted", "webServer.getOrigin() \u4E0D\u53EF\u7528\uFF0C\u65E0\u6CD5\u63A2\u6D4B\u8DEF\u7531");
+    return fail("routeMounted", "Host \u5C1A\u672A\u63D0\u4F9B\u76D1\u542C\u5730\u5740\uFF08origin\uFF09\uFF0C\u65E0\u6CD5\u63A2\u6D4B\u8DEF\u7531");
   }
   const url = `${origin}${PING_PATH}`;
   try {

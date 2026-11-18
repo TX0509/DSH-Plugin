@@ -4,9 +4,47 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+// src/shared/routes.ts
 var TOKEN_GLOBAL = "__DSH_VIDEO_WORKBENCH__";
+var TOKEN_HEADER = "x-dsh-video-workbench-token";
 var PING_PATH = "/api/video-workbench/ping";
 var MEDIA_PATH = "/api/video-workbench/media";
+
+// src/host/adapters/logger.ts
+function hostLogger(ctx) {
+  return {
+    info(message) {
+      if (typeof ctx.logger?.info === "function") ctx.logger.info(message);
+    },
+    error(message) {
+      if (typeof ctx.logger?.error === "function") ctx.logger.error(message);
+    }
+  };
+}
+
+// src/host/adapters/web-server.ts
+function createWebServerAdapter(web) {
+  return {
+    registerRoute(route, label) {
+      return web.effect(() => web.webServer.register(route), label);
+    },
+    onIndexInject(listener) {
+      return web.effect(
+        () => web.on("webserver/index-inject", (table, peer) => {
+          if (peer?.principal?.kind !== "owner") return;
+          listener(table);
+        }),
+        "video-workbench:index-inject"
+      );
+    }
+  };
+}
+function withWebServer(ctx, setup) {
+  ctx.inject(["webServer"], (web) => setup(createWebServerAdapter(web)));
+}
+
+// src/host/index.ts
 var MIME = {
   ".mp4": "video/mp4",
   ".m4v": "video/mp4",
@@ -103,7 +141,7 @@ function readToken(request) {
   const url = new URL(request.url ?? "/", "http://placeholder.invalid");
   const query = url.searchParams.get("t");
   if (typeof query === "string" && query.length > 0) return query;
-  const header = request.headers["x-dsh-video-workbench-token"];
+  const header = request.headers[TOKEN_HEADER];
   if (typeof header === "string" && header.length > 0) return header;
   return void 0;
 }
@@ -227,46 +265,41 @@ function createPingHandler(options) {
   };
 }
 function createIndexInjector(token) {
-  return (table, peer) => {
-    if (peer?.principal?.kind !== "owner") return;
+  return (table) => {
     table.push({ kind: "global", name: TOKEN_GLOBAL, value: { token } });
   };
 }
 function apply(ctx, config = {}) {
+  const logger = hostLogger(ctx);
   const configured = typeof config.mediaRoot === "string" && config.mediaRoot.trim().length > 0 ? config.mediaRoot.trim() : defaultMediaRoot();
   let mediaRoot = path.resolve(configured);
   if (isFilesystemRoot(mediaRoot)) {
     const fallback = path.resolve(defaultMediaRoot());
-    if (typeof ctx.logger?.error === "function") {
-      ctx.logger.error(`[video-workbench] mediaRoot "${mediaRoot}" is a filesystem root; falling back to ${fallback}`);
-    }
+    logger.error(`[video-workbench] mediaRoot "${mediaRoot}" is a filesystem root; falling back to ${fallback}`);
     mediaRoot = fallback;
   }
   const requireToken = config.requireToken !== false;
   const token = randomBytes(24).toString("base64url");
-  ctx.inject(["webServer"], (webCtx) => {
-    webCtx.on("webserver/index-inject", createIndexInjector(token));
-    webCtx.effect(() => webCtx.webServer.register({
+  withWebServer(ctx, (server) => {
+    server.onIndexInject(createIndexInjector(token));
+    server.registerRoute({
       kind: "exact",
       path: PING_PATH,
       handler: createPingHandler({ mediaRoot, token, requireToken })
-    }), "video-workbench:ping");
-    webCtx.effect(() => webCtx.webServer.register({
+    }, "video-workbench:ping");
+    server.registerRoute({
       kind: "prefix",
       path: MEDIA_PATH,
       handler: createMediaHandler({ mediaRoot, token, requireToken })
-    }), "video-workbench:media");
+    }, "video-workbench:media");
   });
-  if (typeof ctx.logger?.info === "function") {
-    ctx.logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`);
-  }
+  logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`);
 }
 export {
   MEDIA_PATH,
   PING_PATH,
   TOKEN_GLOBAL,
   apply,
-  createIndexInjector,
   createMediaHandler,
   createPingHandler,
   defaultMediaRoot,

@@ -1,6 +1,7 @@
 # M1 执行计划：骨架与播放
 
-> 状态：**步骤 1 已完成**（提交 `e1a9183`，`verify` 全绿）；从步骤 2 继续。基线 v0.0.4（M0 完成，36 项测试通过）。
+> 状态：**步骤 1–2 已完成**（`chore: 引入 TypeScript 与 esbuild 构建`、
+> `refactor: 抽取 DSH 适配层`；`verify` 全绿）；从步骤 3 继续。基线 v0.0.4（M0 完成，36 项测试通过）。
 > 本文替代 [PLAN.md](../PLAN.md) 里 M1 那一行，给出可以照着执行的步骤、目录、命令与验收标准。
 > 范围：Windows + DSH Desktop；Web / macOS 不在 M1 验收范围。
 
@@ -158,11 +159,14 @@ const wrapped = [
 
 ```text
 tsc --noEmit
+checkDshBoundary()                          # DSH 调用只出现在 adapters 与 shared/dsh.ts
 node scripts/build.mjs
 git diff --exit-code index.js client.js     # 产物与提交一致
 node --check index.js client.js
 node --test
 ```
+
+（实际实现：边界检查内联在 `scripts/verify.mjs` 的 `checkDshBoundary()`，不单独出脚本。）
 
 `package.json` 增加：
 

@@ -30,26 +30,67 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // src/client/index.tsx
 var React = __toESM(require("react"), 1);
-var h = React.createElement;
-var APP_BASE = new URL(".", document.baseURI);
+
+// src/shared/routes.ts
 var TOKEN_GLOBAL = "__DSH_VIDEO_WORKBENCH__";
-var OPEN_EVENT = "dshvw:toggle";
-var readToken = () => {
+
+// src/client/adapters/context.ts
+function readToken() {
   const value = globalThis[TOKEN_GLOBAL];
-  if (value && typeof value === "object" && "token" in value) {
+  if (value !== null && typeof value === "object" && "token" in value) {
     const token = value.token;
     return typeof token === "string" ? token : "";
   }
   return "";
-};
-var apiUrl = (pathname, params) => {
+}
+var APP_BASE = new URL(".", document.baseURI);
+function hostUrl(pathname, params = {}) {
   const url = new URL(pathname.replace(/^\//u, ""), APP_BASE);
-  for (const [key, value] of Object.entries(params ?? {})) {
+  for (const [key, value] of Object.entries(params)) {
     if (value !== void 0 && value !== "") url.searchParams.set(key, value);
   }
   return url.href;
-};
-var mediaUrl = (name) => apiUrl("api/video-workbench/media", { path: name, t: readToken() });
+}
+function installStyles(ctx, css, label) {
+  ctx.effect(() => {
+    const element = document.createElement("style");
+    element.textContent = css;
+    document.head.appendChild(element);
+    return () => element.remove();
+  }, label);
+}
+
+// src/client/adapters/loader.ts
+function loadClientModule(options) {
+  const loader = globalThis.__ModuleLoader__;
+  if (loader === void 0) {
+    throw new Error("dsh-video-workbench: the DSH module loader is unavailable");
+  }
+  loader.load(options);
+}
+
+// src/client/adapters/slots.ts
+var ENTRY_SLOT = "conversation.input.left";
+var OVERLAY_SLOT = "shell.overlay";
+var ORDER = 40;
+function registerEntry(ctx, id, component) {
+  mount(ctx, ENTRY_SLOT, id, component);
+}
+function registerOverlay(ctx, id, component) {
+  mount(ctx, OVERLAY_SLOT, id, component);
+}
+function mount(ctx, name, id, component) {
+  ctx.slots.inject(name, () => ctx.slots.register({ name, id, order: ORDER }, component));
+}
+
+// src/client/index.tsx
+var h = React.createElement;
+var PLUGIN_ID = "dsh-video-workbench";
+var OPEN_EVENT = "dshvw:toggle";
+var mediaUrl = (name) => hostUrl("api/video-workbench/media", {
+  path: name,
+  t: readToken()
+});
 var maskToken = (href) => href.replace(/([?&]t=)[^&]*/u, "$1***");
 var CSS = [
   ".dshvw-trigger{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
@@ -156,7 +197,7 @@ function Panel() {
         return;
       }
       try {
-        const pingResponse = await fetch(apiUrl("api/video-workbench/ping", { t: token }));
+        const pingResponse = await fetch(hostUrl("api/video-workbench/ping", { t: token }));
         const ping = await pingResponse.json();
         const probe = await fetch(mediaUrl("test.mp4"), { headers: { Range: "bytes=0-99" } });
         if (cancelled) return;
@@ -245,28 +286,15 @@ function Panel() {
     h("pre", { className: "dshvw-diag", key: "diag" }, diag)
   ]));
 }
-window.__ModuleLoader__.load({
-  id: "dsh-video-workbench",
+loadClientModule({
+  id: PLUGIN_ID,
   factory() {
     return {
       inject: ["slots"],
       apply(ctx) {
-        ctx.effect(() => {
-          const element = document.createElement("style");
-          element.textContent = CSS;
-          document.head.appendChild(element);
-          return () => element.remove();
-        }, "video-workbench:styles");
-        ctx.slots.inject("conversation.input.left", () => ctx.slots.register({
-          name: "conversation.input.left",
-          id: "video-workbench-trigger",
-          order: 40
-        }, Trigger));
-        ctx.slots.inject("shell.overlay", () => ctx.slots.register({
-          name: "shell.overlay",
-          id: "video-workbench-panel",
-          order: 40
-        }, Panel));
+        installStyles(ctx, CSS, "video-workbench:styles");
+        registerEntry(ctx, "video-workbench-trigger", Trigger);
+        registerOverlay(ctx, "video-workbench-panel", Panel);
       }
     };
   }

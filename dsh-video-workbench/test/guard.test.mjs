@@ -7,22 +7,70 @@ import {
   PING_PATH,
   TOKEN_GLOBAL,
   apply,
-  createIndexInjector,
   defaultMediaRoot,
   isFilesystemRoot,
   matchesEtag,
 } from '../index.js'
 
-test('createIndexInjector: an owner page receives the token', () => {
+/** Minimal Cordis context: records what apply() registers. */
+function stubContext() {
+  const routes = []
+  const messages = []
+  const listeners = []
+  const ctx = {
+    logger: {
+      info: (message) => messages.push(message),
+      error: (message) => messages.push(message),
+    },
+    inject(_dependencies, callback) {
+      callback({
+        on: (name, listener) => {
+          listeners.push({ name, listener })
+          return () => {}
+        },
+        effect: (effect) => {
+          effect()
+          return () => {}
+        },
+        webServer: {
+          register: (route) => {
+            routes.push(route)
+            return () => {}
+          },
+        },
+      })
+    },
+  }
+  return { ctx, routes, messages, listeners }
+}
+
+/** Drive every index-injection listener the plugin registered. */
+function emitIndexInject(listeners, table, peer) {
+  for (const entry of listeners) {
+    if (entry.name === 'webserver/index-inject') entry.listener(table, peer)
+  }
+}
+
+test('index injection: an owner page receives the token global', () => {
+  const stub = stubContext()
+  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media') })
+
   const table = []
-  createIndexInjector('token-1')(table, { principal: { kind: 'owner' } })
-  assert.deepEqual(table, [{ kind: 'global', name: TOKEN_GLOBAL, value: { token: 'token-1' } }])
+  emitIndexInject(stub.listeners, table, { principal: { kind: 'owner' } })
+  assert.equal(table.length, 1)
+  assert.equal(table[0].kind, 'global')
+  assert.equal(table[0].name, TOKEN_GLOBAL)
+  assert.equal(typeof table[0].value.token, 'string')
+  assert.ok(table[0].value.token.length > 0, 'expected a non-empty token')
 })
 
-test('createIndexInjector: non-owner and missing peers receive nothing', () => {
+test('index injection: non-owner and missing peers receive nothing', () => {
+  const stub = stubContext()
+  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media') })
+
   for (const peer of [{ principal: { kind: 'guest' } }, { principal: undefined }, undefined]) {
     const table = []
-    createIndexInjector('token-1')(table, peer)
+    emitIndexInject(stub.listeners, table, peer)
     assert.deepEqual(table, [], `expected no injection for ${JSON.stringify(peer)}`)
   }
 })
@@ -45,35 +93,6 @@ test('matchesEtag: accepts exact, weak, listed and wildcard validators', () => {
   assert.equal(matchesEtag('', '"abc"'), false)
 })
 
-/** Minimal Cordis context: records what apply() registers. */
-function stubContext() {
-  const routes = []
-  const messages = []
-  const events = []
-  const ctx = {
-    logger: {
-      info: (message) => messages.push(message),
-      error: (message) => messages.push(message),
-    },
-    inject(_dependencies, callback) {
-      callback({
-        on: (name) => events.push(name),
-        effect: (effect) => {
-          effect()
-          return () => {}
-        },
-        webServer: {
-          register: (route) => {
-            routes.push(route)
-            return () => {}
-          },
-        },
-      })
-    },
-  }
-  return { ctx, routes, messages, events }
-}
-
 test('apply registers both routes and the index injector', () => {
   const stub = stubContext()
   apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media') })
@@ -82,7 +101,7 @@ test('apply registers both routes and the index injector', () => {
     stub.routes.map((route) => [route.kind, route.path]).sort(),
     [['exact', PING_PATH], ['prefix', MEDIA_PATH]].sort(),
   )
-  assert.deepEqual(stub.events, ['webserver/index-inject'])
+  assert.deepEqual(stub.listeners.map((entry) => entry.name), ['webserver/index-inject'])
   assert.equal(stub.messages.some((message) => message.includes('filesystem root')), false)
 })
 

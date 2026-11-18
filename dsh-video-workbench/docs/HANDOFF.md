@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，对应提交 `e1a9183`（M1 步骤 1 完成）。
+> 最后更新：2026-11-19，对应提交 `refactor: 抽取 DSH 适配层`（M1 步骤 2 完成）。
 
 ## 1. 这是什么
 
@@ -10,7 +10,7 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M0 完成；M1 步骤 1（构建骨架）完成**
+- 当前阶段：**M0 完成；M1 步骤 1–2 完成**（下一步：步骤 3 项目模型与项目路由）
 - 版本：`0.0.4`；分支 `main`；远端 `origin/main` 与本地同步
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.3`
 
@@ -22,7 +22,7 @@ cd D:\Terry\Code\DSH-Plugin\dsh-video-workbench
 # 构建（源码 src/ → 根目录 index.js / client.js）
 node scripts/build.mjs
 
-# 全量校验：类型 → 构建 → 产物一致 → 语法 → 测试
+# 全量校验：类型 → DSH 边界 → 构建 → 产物一致 → 语法 → 测试
 node scripts/verify.mjs
 
 # 只跑测试
@@ -40,15 +40,21 @@ node scripts/install.mjs --check
 
 ```text
 dsh-video-workbench/
-├── src/host/index.ts        # 全部 Host 逻辑（路由、token、Range/ETag、路径校验）
-├── src/client/index.tsx     # 全部 Client 逻辑（▶ 入口、浮层、播放器、错误重试）
-├── src/shared/dsh.ts        # 手写 DSH 结构类型（不 import @deepseek-ai/*）
+├── src/host/index.ts        # 媒体路由、token、Range/ETag、路径校验、apply 组装
+├── src/host/adapters/       # web-server.ts（registerRoute / onIndexInject + owner 过滤）、logger.ts
+├── src/client/index.tsx     # ▶ 入口、浮层、播放器、错误重试
+├── src/client/adapters/     # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）、loader.ts
+├── src/shared/              # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js     # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
 ├── test/{range,media,guard}.test.mjs   # 36 项
 ├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
+
+**DSH 边界规则**：`src/host/` 与 `src/client/` 的业务文件不得直接出现
+`webServer`、`slots.`、`__ModuleLoader__`、`__DSH_VIDEO_WORKBENCH__`；
+只有 `*/adapters/*` 与类型声明文件 `shared/dsh.ts` 可以出现。`verify` 会自动检查。
 
 M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播放/拖动、取消渲染无残留。
 详见 `docs/M0-FINDINGS.md`。
@@ -85,20 +91,25 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 
 工作区目录已建好（`video-projects/`、`video-exports/`；`spike-m0/` 是 M0 渲染测试遗留）。
 
-## 6. 接下来做什么（M1 步骤 2–5）
+## 6. 接下来做什么（M1 步骤 3–5）
 
 详细方案见 `docs/M1-PLAN.md`。按顺序做，每步一个提交，每步结束 `node scripts/verify.mjs` 必须全绿。
 
-### 步骤 2：抽取 DSH 适配层（0.5 人日）
+### 步骤 2：抽取 DSH 适配层 ✅ 已完成
 
-目标：业务代码不再直接出现 `webServer`、`slots`、`__ModuleLoader__`、`__DSH_VIDEO_WORKBENCH__`。
+提交 `refactor: 抽取 DSH 适配层`：
 
-- 新增 `src/host/adapters/web-server.ts`：封装 `registerRoute`、`onIndexInject`（含 owner 过滤）。
-- 新增 `src/client/adapters/slots.ts`：`registerEntry` / `registerOverlay`。
-- 新增 `src/client/adapters/context.ts`：token 全局读取、`document.head` 样式注入。
-- `src/host/index.ts` 与 `src/client/index.tsx` 改为只调用适配层。
-- 验收：`node --test` 36 项不变；`rg "webServer|__ModuleLoader__|slots\." src`（排除 adapters）为空。
-- 提交：`refactor: 抽取 DSH 适配层`
+- `src/host/adapters/web-server.ts`：`withWebServer(ctx, setup)` + `registerRoute` / `onIndexInject`，
+  owner 过滤收进适配层（业务只拿到注入表，不再判断 peer）；
+- `src/host/adapters/logger.ts`：`ctx.logger` 缺失时 no-op；
+- `src/client/adapters/slots.ts`：`registerEntry` / `registerOverlay`；
+- `src/client/adapters/context.ts`：token 读取、`document.baseURI` 解析、样式注入；
+- `src/client/adapters/loader.ts`：`loadClientModule`（`__ModuleLoader__` 只在这里出现）；
+- `src/shared/routes.ts`：路径、token 全局名、token 头名单点定义；
+- `scripts/verify.mjs` 新增 `dsh boundary` 检查，防止后续步骤把 DSH 调用写回业务代码。
+
+验收：`node --test` 仍为 36 项全绿；`node scripts/verify.mjs` 全绿。
+**未做**：客户端 bundle 有变化，但只在静态层面校验，**尚未实机重启验证**（步骤 5 一并做）。
 
 ### 步骤 3：项目模型与项目路由（0.75 人日）
 
@@ -143,6 +154,12 @@ node scripts/verify.mjs
 
 ## 9. 已知未决/可选
 
+- **客户端 bundle 有双层 `__ModuleLoader__.load`**：`scripts/build.mjs` 用
+  `load({ id, factory })` 包住整个 bundle（为了给工厂里的 `require` 提供作用域），
+  而 `src/client/index.tsx` 的 `loadClientModule(...)` 在工厂执行时又对同一个 `id`
+  注册一次。M0 实机通过说明外壳能容忍这种情况，但这是冗余，正常形态应只注册一次。
+  修复需要改构建包装（内层 export 改为 `module.exports` 直接返回插件对象）并**完全重启
+  DSH 实机验证**；不要在步骤 3/4 顺手改，留到一次带实机验收的提交。
 - `package.json` 的 `files` 目前只含产物，不含 `src/` 与 `tsconfig.json`。link 安装无影响；
   若将来要发布 tgz 并允许他人重建，需要把源码一并纳入。
 - `exportDir` 的默认值尚未写进 `Config`（当前只是"可选、未配置不导出"）。

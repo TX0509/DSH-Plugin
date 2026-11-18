@@ -2,33 +2,19 @@ import * as React from 'react'
 
 import type { ClientSlotContext } from '../shared/dsh'
 
+import { hostUrl, installStyles, readToken } from './adapters/context'
+import { loadClientModule } from './adapters/loader'
+import { registerEntry, registerOverlay } from './adapters/slots'
+
 const h = React.createElement
 
-// The page is loaded at the app root on both surfaces (dsh-app://app/ and
-// http://host/), so the initial document URL is the right base for API calls.
-// Captured at module evaluation because later SPA navigation changes baseURI.
-const APP_BASE = new URL('.', document.baseURI)
-const TOKEN_GLOBAL = '__DSH_VIDEO_WORKBENCH__'
+const PLUGIN_ID = 'dsh-video-workbench'
 const OPEN_EVENT = 'dshvw:toggle'
 
-const readToken = (): string => {
-  const value = (globalThis as Record<string, unknown>)[TOKEN_GLOBAL]
-  if (value && typeof value === 'object' && 'token' in value) {
-    const token = (value as { token?: unknown }).token
-    return typeof token === 'string' ? token : ''
-  }
-  return ''
-}
-
-const apiUrl = (pathname: string, params?: Record<string, string | undefined>): string => {
-  const url = new URL(pathname.replace(/^\//u, ''), APP_BASE)
-  for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined && value !== '') url.searchParams.set(key, value)
-  }
-  return url.href
-}
-
-const mediaUrl = (name: string): string => apiUrl('api/video-workbench/media', { path: name, t: readToken() })
+const mediaUrl = (name: string): string => hostUrl('api/video-workbench/media', {
+  path: name,
+  t: readToken(),
+})
 
 const maskToken = (href: string): string => href.replace(/([?&]t=)[^&]*/u, '$1***')
 
@@ -152,7 +138,7 @@ function Panel(): React.ReactElement | null {
         return
       }
       try {
-        const pingResponse = await fetch(apiUrl('api/video-workbench/ping', { t: token }))
+        const pingResponse = await fetch(hostUrl('api/video-workbench/ping', { t: token }))
         const ping: unknown = await pingResponse.json()
         const probe = await fetch(mediaUrl('test.mp4'), { headers: { Range: 'bytes=0-99' } })
         if (cancelled) return
@@ -249,29 +235,16 @@ function Panel(): React.ReactElement | null {
   ]))
 }
 
-window.__ModuleLoader__.load({
-  id: 'dsh-video-workbench',
+loadClientModule({
+  id: PLUGIN_ID,
   factory() {
     return {
       inject: ['slots'],
       apply(ctx: ClientSlotContext) {
         // One stylesheet for both entries, removed with the plugin run.
-        ctx.effect(() => {
-          const element = document.createElement('style')
-          element.textContent = CSS
-          document.head.appendChild(element)
-          return () => element.remove()
-        }, 'video-workbench:styles')
-        ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
-          name: 'conversation.input.left',
-          id: 'video-workbench-trigger',
-          order: 40,
-        }, Trigger))
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay',
-          id: 'video-workbench-panel',
-          order: 40,
-        }, Panel))
+        installStyles(ctx, CSS, 'video-workbench:styles')
+        registerEntry(ctx, 'video-workbench-trigger', Trigger)
+        registerOverlay(ctx, 'video-workbench-panel', Panel)
       },
     }
   },

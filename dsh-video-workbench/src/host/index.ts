@@ -5,13 +5,19 @@ import path from 'node:path'
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
-import type { HostContext, IndexInjection, PeerLike, WebContext } from '../shared/dsh'
+import type { HostContext, IndexInjection } from '../shared/dsh'
+import {
+  MEDIA_PATH,
+  PING_PATH,
+  TOKEN_GLOBAL,
+  TOKEN_HEADER,
+} from '../shared/routes'
 
-/** Global injected into the page so the client can authenticate media requests. */
-export const TOKEN_GLOBAL = '__DSH_VIDEO_WORKBENCH__'
+import { hostLogger } from './adapters/logger'
+import { withWebServer } from './adapters/web-server'
 
-export const PING_PATH = '/api/video-workbench/ping'
-export const MEDIA_PATH = '/api/video-workbench/media'
+// Re-exported for tests and for the media handler that shares this wire contract.
+export { MEDIA_PATH, PING_PATH, TOKEN_GLOBAL } from '../shared/routes'
 
 const MIME: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -151,7 +157,7 @@ function readToken(request: IncomingMessage): string | undefined {
   const url = new URL(request.url ?? '/', 'http://placeholder.invalid')
   const query = url.searchParams.get('t')
   if (typeof query === 'string' && query.length > 0) return query
-  const header = request.headers['x-dsh-video-workbench-token']
+  const header = request.headers[TOKEN_HEADER]
   if (typeof header === 'string' && header.length > 0) return header
   return undefined
 }
@@ -299,50 +305,47 @@ export function createPingHandler(options: HandlerOptions): (request: IncomingMe
   }
 }
 
-/** Index-injection row carrying the media token; exported so tests can drive it. */
-export function createIndexInjector(token: string): (table: IndexInjection[], peer?: PeerLike) => void {
-  return (table, peer) => {
-    // Only the owner's page may read media; a non-owner peer page (remote
-    // viewer) must not receive this token.
-    if (peer?.principal?.kind !== 'owner') return
+/**
+ * Index-injection row carrying the media token.
+ * Owner filtering happens in the web-server adapter, not here.
+ */
+function createIndexInjector(token: string): (table: IndexInjection[]) => void {
+  return (table) => {
     table.push({ kind: 'global', name: TOKEN_GLOBAL, value: { token } })
   }
 }
 
 export function apply(ctx: HostContext, config: PluginConfig = {}): void {
+  const logger = hostLogger(ctx)
   const configured = typeof config.mediaRoot === 'string' && config.mediaRoot.trim().length > 0
     ? config.mediaRoot.trim()
     : defaultMediaRoot()
   let mediaRoot = path.resolve(configured)
   if (isFilesystemRoot(mediaRoot)) {
     const fallback = path.resolve(defaultMediaRoot())
-    if (typeof ctx.logger?.error === 'function') {
-      ctx.logger.error(`[video-workbench] mediaRoot "${mediaRoot}" is a filesystem root; falling back to ${fallback}`)
-    }
+    logger.error(`[video-workbench] mediaRoot "${mediaRoot}" is a filesystem root; falling back to ${fallback}`)
     mediaRoot = fallback
   }
   const requireToken = config.requireToken !== false
   const token = randomBytes(24).toString('base64url')
 
-  ctx.inject(['webServer'], (webCtx: WebContext) => {
-    // The page receives the token as a global during index injection; only an
-    // authenticated owner page gets it.
-    webCtx.on('webserver/index-inject', createIndexInjector(token))
+  withWebServer(ctx, (server) => {
+    // The page receives the token as a global during index injection; the
+    // adapter serves only authenticated owner pages.
+    server.onIndexInject(createIndexInjector(token))
 
-    webCtx.effect(() => webCtx.webServer.register({
+    server.registerRoute({
       kind: 'exact',
       path: PING_PATH,
       handler: createPingHandler({ mediaRoot, token, requireToken }),
-    }), 'video-workbench:ping')
+    }, 'video-workbench:ping')
 
-    webCtx.effect(() => webCtx.webServer.register({
+    server.registerRoute({
       kind: 'prefix',
       path: MEDIA_PATH,
       handler: createMediaHandler({ mediaRoot, token, requireToken }),
-    }), 'video-workbench:media')
+    }, 'video-workbench:media')
   })
 
-  if (typeof ctx.logger?.info === 'function') {
-    ctx.logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`)
-  }
+  logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`)
 }

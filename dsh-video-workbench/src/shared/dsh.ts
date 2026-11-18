@@ -23,6 +23,11 @@ export interface WebRoute {
 export interface WebContext {
   webServer: {
     register(route: WebRoute): () => void
+    /**
+     * Root URL local clients use to reach the bound listener.
+     * Throws before the listener binds a port.
+     */
+    getOrigin(): string
   }
   on(
     event: 'webserver/index-inject',

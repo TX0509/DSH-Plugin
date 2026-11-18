@@ -10,6 +10,7 @@ import {
   MEDIA_PATH,
   PING_PATH,
   PROJECTS_PATH,
+  SELFCHECK_PATH,
   TOKEN_GLOBAL,
   TOKEN_HEADER,
 } from '../shared/routes'
@@ -17,10 +18,20 @@ import {
 import { hostLogger } from './adapters/logger'
 import { withWebServer } from './adapters/web-server'
 import { contains, isFilesystemRoot, safeResolve } from './paths'
+import type { ProjectsConfig, ProjectsState } from './projects/root'
+import { resolveProjectsRoot } from './projects/root'
+import { runSelfcheck } from './selfcheck'
 
 // Re-exported for tests and for the routes that share this wire contract.
-export { MEDIA_PATH, PING_PATH, PROJECTS_PATH, TOKEN_GLOBAL } from '../shared/routes'
+export {
+  MEDIA_PATH,
+  PING_PATH,
+  PROJECTS_PATH,
+  SELFCHECK_PATH,
+  TOKEN_GLOBAL,
+} from '../shared/routes'
 export { isFilesystemRoot, safeResolve } from './paths'
+export { resolveProjectsRoot } from './projects/root'
 export { migrateProject } from './projects/migrate'
 export { ASPECTS, FPS_VALUES, SCHEMA_VERSION, validateProject } from './projects/schema'
 export {
@@ -34,6 +45,7 @@ export {
   slugFor,
   writeProject,
 } from './projects/store'
+export { runSelfcheck } from './selfcheck'
 
 const MIME: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -64,15 +76,6 @@ export interface PluginConfig {
 }
 
 /** `ready` = usable; `unset` = not configured; `invalid` = configured but unusable. */
-export type ProjectsState = 'ready' | 'unset' | 'invalid'
-
-export interface ProjectsConfig {
-  state: ProjectsState
-  root?: string
-  /** Local-only diagnostic (may contain an absolute path); never sent to a page. */
-  detail?: string
-}
-
 interface RouteContext {
   root: string
   token: string
@@ -89,6 +92,14 @@ interface PingOptions extends HandlerOptions {
   projects?: ProjectsState
 }
 
+interface SelfcheckRouteOptions {
+  getOrigin(): string | undefined
+  token: string
+  requireToken: boolean
+  mediaRoot: string
+  projects: ProjectsConfig
+}
+
 type RangeBounds = { start: number; end: number }
 type ParsedRange = RangeBounds | 'invalid' | undefined
 
@@ -98,31 +109,6 @@ export function defaultMediaRoot(): string {
     : path.join(os.homedir(), '.dsh')
   return path.join(home, 'cache', 'dsh-video-workbench', 'media')
 }
-
-/**
- * Resolve and create `projectsRoot`.
- * A filesystem root would expose a whole drive, so it is refused rather than
- * silently falling back to another location: the user picked the path.
- */
-export function resolveProjectsRoot(configured: string | undefined): ProjectsConfig {
-  if (typeof configured !== 'string' || configured.trim().length === 0) {
-    return { state: 'unset' }
-  }
-  const candidate = path.resolve(configured.trim())
-  if (isFilesystemRoot(candidate)) {
-    return { state: 'invalid', detail: `projectsRoot "${candidate}" 是盘符根目录，项目功能已禁用` }
-  }
-  try {
-    fs.mkdirSync(candidate, { recursive: true })
-    if (!fs.statSync(candidate).isDirectory()) {
-      return { state: 'invalid', detail: `projectsRoot 不是目录: ${candidate}` }
-    }
-  } catch (error) {
-    return { state: 'invalid', detail: `projectsRoot 不可用: ${candidate}（${String(error)}）` }
-  }
-  return { state: 'ready', root: candidate }
-}
-
 
 /** Parse one `Range: bytes=` header. Returns undefined (no range), 'invalid', or bounds. */
 export function parseRange(header: string | undefined, size: number): ParsedRange {
@@ -345,6 +331,29 @@ function createIndexInjector(token: string): (table: IndexInjection[]) => void {
   }
 }
 
+/**
+ * `video_selfcheck` over HTTP: same token as the other routes, and the checks
+ * inside run against the Host's own origin so route mounting is really tested.
+ */
+function createSelfcheckHandler(options: SelfcheckRouteOptions): (request: IncomingMessage, response: ServerResponse) => void {
+  return (request, response) => {
+    if (options.requireToken && !tokenEquals(readToken(request), options.token)) {
+      sendJson(response, 401, { error: 'unauthorized' })
+      return
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      response.writeHead(405, { allow: 'GET, HEAD' })
+      response.end()
+      return
+    }
+    void runSelfcheck(options)
+      .then((result) => sendJson(response, 200, result))
+      .catch((error: unknown) => {
+        sendJson(response, 500, { ok: false, error: String(error) })
+      })
+  }
+}
+
 export function apply(ctx: HostContext, config: PluginConfig = {}): void {
   const logger = hostLogger(ctx)
   const configured = typeof config.mediaRoot === 'string' && config.mediaRoot.trim().length > 0
@@ -395,6 +404,20 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
         handler: createFileHandler({ root: projects.root, token, requireToken }),
       }, 'video-workbench:projects')
     }
+
+    // The checks inside need `getOrigin()`, which only answers after the
+    // listener binds, so it is resolved per request.
+    server.registerRoute({
+      kind: 'exact',
+      path: SELFCHECK_PATH,
+      handler: createSelfcheckHandler({
+        getOrigin: () => server.origin(),
+        token,
+        requireToken,
+        mediaRoot,
+        projects,
+      }),
+    }, 'video-workbench:selfcheck')
   })
 
   logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`)

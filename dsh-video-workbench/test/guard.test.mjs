@@ -5,6 +5,7 @@ import test from 'node:test'
 import {
   MEDIA_PATH,
   PING_PATH,
+  SELFCHECK_PATH,
   TOKEN_GLOBAL,
   apply,
   defaultMediaRoot,
@@ -99,7 +100,7 @@ test('apply registers both routes and the index injector', () => {
 
   assert.deepEqual(
     stub.routes.map((route) => [route.kind, route.path]).sort(),
-    [['exact', PING_PATH], ['prefix', MEDIA_PATH]].sort(),
+    [['exact', PING_PATH], ['exact', SELFCHECK_PATH], ['prefix', MEDIA_PATH]].sort(),
   )
   assert.deepEqual(stub.listeners.map((entry) => entry.name), ['webserver/index-inject'])
   assert.equal(stub.messages.some((message) => message.includes('filesystem root')), false)
@@ -109,7 +110,7 @@ test('apply falls back to the default root when configured with a filesystem roo
   const stub = stubContext()
   apply(stub.ctx, { mediaRoot: path.parse(process.cwd()).root })
 
-  assert.equal(stub.routes.length, 2)
+  assert.equal(stub.routes.length, 3)
   const message = stub.messages.find((entry) => entry.includes('filesystem root'))
   assert.ok(message, 'expected a filesystem-root error log')
   assert.ok(message.includes(defaultMediaRoot()), 'expected the fallback root in the log')

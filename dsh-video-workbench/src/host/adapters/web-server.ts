@@ -26,6 +26,12 @@ export interface WebServerAdapter {
    * must never receive this plugin's media token.
    */
   onIndexInject(listener: OwnerIndexListener): Disposer
+
+  /**
+   * Root URL local clients use to reach the bound listener, or undefined
+   * before it binds a port.
+   */
+  origin(): string | undefined
 }
 
 /** Wrap a live `webServer` context. Exported so tests can drive it directly. */
@@ -42,6 +48,14 @@ export function createWebServerAdapter(web: WebContext): WebServerAdapter {
         }),
         'video-workbench:index-inject',
       )
+    },
+    origin() {
+      try {
+        return web.webServer.getOrigin()
+      } catch {
+        // Called before `listen` binds; the self-check reports it as a failure.
+        return undefined
+      }
     },
   }
 }

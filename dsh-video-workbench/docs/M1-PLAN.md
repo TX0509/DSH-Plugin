@@ -1,8 +1,8 @@
 # M1 执行计划：骨架与播放
 
-> 状态：**步骤 1–3 已完成**（`chore: 引入 TypeScript 与 esbuild 构建`、
-> `refactor: 抽取 DSH 适配层`、`feat: 加入项目模型与项目路由`；`verify` 全绿，测试 53 项）；
-> 从步骤 4 继续。基线 v0.0.4（M0 完成）。
+> 状态：**步骤 1–4 已完成**（`chore: 引入 TypeScript 与 esbuild 构建`、
+> `refactor: 抽取 DSH 适配层`、`feat: 加入项目模型与项目路由`、`feat: 增加 video_selfcheck`；
+> `verify` 全绿，测试 62 项）；从步骤 5 继续。基线 v0.0.4（M0 完成）。
 > 本文替代 [PLAN.md](../PLAN.md) 里 M1 那一行，给出可以照着执行的步骤、目录、命令与验收标准。
 > 范围：Windows + DSH Desktop；Web / macOS 不在 M1 验收范围。
 

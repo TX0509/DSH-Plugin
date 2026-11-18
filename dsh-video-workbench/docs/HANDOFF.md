@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，对应提交 `feat: 加入项目模型与项目路由`（M1 步骤 3 完成）。
+> 最后更新：2026-11-19，对应提交 `feat: 增加 video_selfcheck`（M1 步骤 4 完成）。
 
 ## 1. 这是什么
 
@@ -10,7 +10,7 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M0 完成；M1 步骤 1–3 完成**（下一步：步骤 4 `video_selfcheck`）
+- 当前阶段：**M0 完成；M1 步骤 1–4 完成**（下一步：步骤 5 实机重启验收与文档）
 - 版本：`0.0.4`；分支 `main`；远端 `origin/main` 与本地同步
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.3`
 
@@ -40,16 +40,17 @@ node scripts/install.mjs --check
 
 ```text
 dsh-video-workbench/
-├── src/host/index.ts        # apply 组装、ping/file 路由、token、Range/ETag
+├── src/host/index.ts        # apply 组装、ping/file/selfcheck 路由、token、Range/ETag
 ├── src/host/paths.ts        # safeResolve / isFilesystemRoot / contains
-├── src/host/adapters/       # web-server.ts（registerRoute / onIndexInject + owner 过滤）、logger.ts
-├── src/host/projects/       # schema.ts（v1 校验）、migrate.ts、store.ts（原子写、slug、CRUD）
+├── src/host/adapters/       # web-server.ts（registerRoute / onIndexInject / getOrigin + owner 过滤）、logger.ts
+├── src/host/projects/       # schema.ts（v1 校验）、migrate.ts、store.ts（原子写、slug、CRUD）、root.ts（projectsRoot）
+├── src/host/selfcheck.ts    # video_selfcheck 的 5 项检查（真实 HTTP 探测）
 ├── src/client/index.tsx     # ▶ 入口、浮层、播放器、错误重试
 ├── src/client/adapters/     # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）、loader.ts
 ├── src/shared/              # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js     # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
-├── test/{range,media,guard,projects}.test.mjs   # 53 项
+├── test/{range,media,guard,projects,selfcheck}.test.mjs   # 62 项
 ├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
@@ -80,6 +81,9 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
    曾出现约 1/50 的偶发失败。
 9. **HyperFrames**（M2 起）：固定 `0.6.33`；Chrome 自动下载在本机网络不可用，要用
    `HYPERFRAMES_BROWSER_PATH` 指向系统 Chrome；pnpm 需要 `--allow-build` 才能装好 ffmpeg/onnxruntime。
+10. **`webServer.getOrigin()` 能拿到真实 `http://127.0.0.1:<port>`**：监听绑定后才可用，之前会 throw。
+    `video_selfcheck` 用它做真实 HTTP 自检（而不是只调 handler），访问器在
+    `src/host/adapters/web-server.ts` 里包了 try/catch，绑定前返回 `undefined`。
 
 ## 5. 已确认的决定
 
@@ -94,7 +98,7 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 
 工作区目录已建好（`video-projects/`、`video-exports/`；`spike-m0/` 是 M0 渲染测试遗留）。
 
-## 6. 接下来做什么（M1 步骤 4–5）
+## 6. 接下来做什么（M1 步骤 5）
 
 详细方案见 `docs/M1-PLAN.md`。按顺序做，每步一个提交，每步结束 `node scripts/verify.mjs` 必须全绿。
 
@@ -136,11 +140,33 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 
 **未做**：客户端仍未使用项目路由（M2 起接）；`exportDir` 尚无写入逻辑；同样**未实机重启验证**（步骤 5）。
 
-### 步骤 4：video_selfcheck（0.25 人日）
+### 步骤 4：video_selfcheck ✅ 已完成
 
-5 项检查（见 M1-PLAN 第 7 节）：路由挂载、token 要求、媒体 206、projectsRoot 可写、projects 路由可读。
-输出 `{ ok, checks: [{ name, ok, detail }] }`。
-提交：`feat: 增加 video_selfcheck`
+提交 `feat: 增加 video_selfcheck`：
+
+- `src/host/selfcheck.ts`：`runSelfcheck()` 跑 5 项检查，输出 `{ ok, checks: [{ name, ok, detail }] }`；
+  名称固定为 `routeMounted` / `tokenRequired` / `mediaProbe` / `projectsRootWritable` / `projectsRoute`，
+  每项都带可读 `detail`，单项失败不影响其它项。
+- 路由探测走**真实 HTTP**：用 `webServer.getOrigin()`（见 §4 第 10 条）请求
+  `/api/video-workbench/ping`（匿名必须 401 且是本插件的 JSON，带 token 必须 200 且 `requireToken` 与配置一致）；
+  只有 handler 能跑通、但路由没挂载时，这里会失败。
+- `tokenRequired` 用匿名/带 token 两次 ping 的结果与配置比对，不是简单回显配置。
+- 媒体探测读 `mediaRoot/test.mp4` 的 0–99 字节，必须 206；项目探测读最新项目的 `project.json` 必须 200，
+  没有项目时记为通过并注明"跳过"。
+- `projectsRootWritable` 在根下写入并删除 `.selfcheck-*.tmp`；未配置时失败并提示去配置。
+- 新增路由 `GET /api/video-workbench/selfcheck?t=<token>`（token 规则同其它路由），
+  供实机验收时在页面控制台直接调用；`fetchImpl` / `timeoutMs` / `getOrigin` 可注入，测试用 fake fetch。
+- `webServer` 适配层新增 `origin()`（内部 try/catch，绑定前返回 undefined）；
+  `src/shared/dsh.ts` 补 `getOrigin(): string` 类型。
+- 测试新增 9 项（`test/selfcheck.test.mjs`，含一条真实 HTTP 监听 + 真实 fetch 的集成用例），总数 **62**。
+
+实机验收时在页面 DevTools 控制台执行（token 由 index 注入）：
+
+```js
+const t = window.__DSH_VIDEO_WORKBENCH__.token
+const r = await fetch(`/api/video-workbench/selfcheck?t=${t}`).then((x) => x.json())
+console.table(r.checks); r.ok
+```
 
 ### 步骤 5：实机验收与文档（0.5 人日）
 
@@ -164,7 +190,7 @@ cd dsh-video-workbench
 node scripts/verify.mjs
 ```
 
-全绿说明环境正常，直接从「步骤 4」开始；任何一步失败，先修 `verify` 再动业务代码。
+全绿说明环境正常，直接从「步骤 5」开始；任何一步失败，先修 `verify` 再动业务代码。
 
 ## 9. 已知未决/可选
 

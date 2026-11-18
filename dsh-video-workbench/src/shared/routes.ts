@@ -18,3 +18,6 @@ export const MEDIA_PATH = '/api/video-workbench/media'
 
 /** Prefix route serving read-only project files (same token as media). */
 export const PROJECTS_PATH = '/api/video-workbench/projects'
+
+/** Exact route running the plugin self-check over real HTTP. */
+export const SELFCHECK_PATH = '/api/video-workbench/selfcheck'

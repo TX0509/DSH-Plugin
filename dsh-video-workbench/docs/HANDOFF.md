@@ -11,7 +11,8 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
 - 当前阶段：**M0 完成；M1 代码/文档完成**（构建、适配层、项目模型与路由、`video_selfcheck`、文档）
-- 待办：**桌面端完全重启后的实机验收**（清单见 [README](../README.md)「M1 验收」与本文件 §6）
+- 已实机验证（Host 半区）：运行中的 Desktop 热重载后启动自检 **5/5**，项目路由真实读取 200
+- 待办：**客户端半区完全重启验收**（▶、token、播放/Esc、亮暗与窄窗口），清单见 [README](../README.md)「M1 验收」
 - 版本：`0.1.0`；分支 `main`（本轮提交尚未 push）
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.3`
 
@@ -96,6 +97,10 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 12. **profile 侧配置按 id 覆盖**：profile 的 `cordis.patch.yml` 写
     `- id: video-workbench` / `name: dsh-video-workbench` / `config: {...}` 即可覆盖插件 Config；
     运行中手改可能被应用回写覆盖，改动前后都确认一次（备份在 profile 目录）。
+13. **改 profile 的 `cordis.patch.yml` 会热重载插件 Host 半区**（2026-11-19 实测：写入配置后
+    约 3 秒，启动自检自动重跑；再追加一行注释又重跑一次）。Host 改动/配置不用重启就生效，
+    但**客户端 bundle 仍只在启动时合成**，所以客户端验收必须完全重启。
+    热重载会重新生成 token，旧页面要刷新或重启后才拿到新 token。
 
 ## 5. 已确认的决定
 
@@ -127,14 +132,23 @@ M1 五个步骤全部完成（提交见 `git log --oneline`）：
 
 自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物一致、语法、65 项测试）。
 
-**剩余：桌面端完全重启后的实机验收**（本轮会话运行在 DSH 内部，重启会终止会话，因此未执行）：
+Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发热重载，插件自动跑启动自检）：
+
+- 5/5 全绿，报告 `$DSH_HOME/cache/dsh-video-workbench/selfcheck.json`：
+  `routeMounted`（匿名 401 / 带 token 200）、`tokenRequired`、`mediaProbe`（206，
+  `bytes 0-99/1548444`）、`projectsRootWritable`、`projectsRoute`（读取
+  `20261119-003934/project.json` → 200）。
+- 示例项目已建：`D:\Terry\Videos\dsh-video\video-projects\20261119-003934\`
+  （`project.json` + `renders/v1.mp4` 样例），可直接用于播放验收。
+- 复跑命令：`node scripts/check-selfcheck.mjs`（退出码 0 表示全绿）。
+
+**剩余：客户端半区完全重启验收**（本轮会话运行在 DSH 内部，重启会终止会话，因此未执行）：
 
 1. 完全退出 DSH（含托盘图标），重新打开；
-2. 等 3 秒后读 `$DSH_HOME\cache\dsh-video-workbench\selfcheck.json`，确认 `"ok": true`、5 项全绿；
+2. 等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔、退出码 0；
 3. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、播放/拖动、Esc、错误态重试；
-4. 项目路由：`/projects?path=<slug>/project.json` 200、`renders/` 下的 mp4 206；
-5. 亮/暗主题、侧栏展开/收起、窄窗口快速过一遍；
-6. 把结果补进 `README.md` 的「已验证」表与 `docs/COMPAT.md`。
+4. 亮/暗主题、侧栏展开/收起、窄窗口快速过一遍；
+5. 把结果补进 `README.md` 的「已验证」表与 `docs/COMPAT.md`。
 
 也可以在页面 DevTools 控制台手动复跑：
 

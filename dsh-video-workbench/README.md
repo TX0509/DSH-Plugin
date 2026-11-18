@@ -23,7 +23,9 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.0.3 | 重启后复测 | ✅ `ping` 不再返回 `node`；token、206、播放至 1.56s 均通过 |
 | v0.0.4 | 重启后全链路复测 | ✅ token、206、播放、拖动 seek、错误态与"重试"、视频聚焦时 Esc 关闭 全部通过 |
 | v0.1.0（M1） | 类型检查 / 构建 / 产物一致 / DSH 边界 / 65 项测试 | ✅ `node scripts/verify.mjs` 全绿 |
-| v0.1.0（M1） | 桌面端重启后的实机验收 | ⏳ **待执行**（清单见文末） |
+| v0.1.0（M1） | 运行中的 Desktop 热重载 Host 后启动自检 | ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200 |
+| v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
+| v0.1.0（M1） | 桌面端完全重启后的客户端验收（▶/token/播放/Esc） | ⏳ **待执行**（见「M1 验收」） |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 
@@ -120,24 +122,24 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ```powershell
 cd dsh-video-workbench
-node scripts/verify.mjs        # 类型 + DSH 边界 + 构建 + 产物一致 + 语法 + 测试（65）
+node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物一致 + 语法 + 测试（65）
+node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
 ```
 
-实机部分（需要完全退出并重新打开 DSH）：
+Host 侧已在运行中的 Desktop 上验证（修改 profile 配置会热重载 Host 半区，插件随即自动跑一次自检）：
 
-1. 启动 3 秒后读取 `$DSH_HOME\cache\dsh-video-workbench\selfcheck.json`，确认
-   `"ok": true` 且 5 项检查全部通过（`routeMounted` / `tokenRequired` / `mediaProbe` /
-   `projectsRootWritable` / `projectsRoute`）。
-2. 页面 DevTools 控制台复跑（token 由页面注入）：
-   ```js
-   const t = window.__DSH_VIDEO_WORKBENCH__.token
-   const r = await fetch(`/api/video-workbench/selfcheck?t=${t}`).then((x) => x.json())
-   console.table(r.checks); r.ok
-   ```
-3. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、能播放与拖动、
-   视频聚焦时 Esc 关闭、错误态可"重试"。
-4. 项目路由：`/projects?path=<slug>/project.json` 返回 200，`renders/` 下的 mp4 返回 206。
-5. 亮色/暗色、侧栏展开/收起、窄窗口快速过一遍（完整矩阵留 M6）。
+- 启动自检 5/5：`routeMounted`（匿名 401 / 带 token 200）、`tokenRequired`、`mediaProbe`
+  （Range 0-99 → 206）、`projectsRootWritable`、`projectsRoute`（读取
+  `20261119-003934/project.json` → 200）；报告在
+  `$DSH_HOME\cache\dsh-video-workbench\selfcheck.json`。
+- 示例项目：`<projectsRoot>/20261119-003934/`（含 `renders/v1.mp4` 样例，可直接用项目路由播放）。
+
+剩余（客户端 bundle 只在启动时合成，需要**完全退出并重新打开 DSH**）：
+
+1. 重启后等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔ 且退出码 0；
+2. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、能播放与拖动、
+   视频聚焦时 Esc 关闭、错误态可"重试"；
+3. 亮色/暗色、侧栏展开/收起、窄窗口快速过一遍（完整矩阵留 M6）。
 
 ## 兼容性
 

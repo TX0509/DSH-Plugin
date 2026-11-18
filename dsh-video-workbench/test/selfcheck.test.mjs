@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,8 +12,10 @@ import {
   SELFCHECK_PATH,
   apply,
   createProject,
+  readSelfcheckReport,
   resolveProjectsRoot,
   runSelfcheck,
+  writeSelfcheckReport,
 } from '../index.js'
 
 /** 2026-11-19 00:21:03 local time. */
@@ -241,6 +243,66 @@ test('runSelfcheck: every call carries the token and stays on the given origin',
   }
 })
 
+test('writeSelfcheckReport: atomic JSON report with a timestamp', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-report-'))
+  try {
+    const result = {
+      ok: true,
+      checks: [{ name: 'routeMounted', ok: true, detail: 'ok' }],
+    }
+    const file = writeSelfcheckReport(dir, result, FIXED)
+    assert.equal(path.basename(file), 'selfcheck.json')
+    const report = JSON.parse(readFileSync(file, 'utf8'))
+    assert.equal(report.ranAt, FIXED.toISOString())
+    assert.equal(report.ok, true)
+    assert.deepEqual(report.checks, result.checks)
+    assert.deepEqual(readdirSync(dir).filter((name) => name.includes('.tmp-')), [])
+    assert.deepEqual(readSelfcheckReport(dir), report)
+  } finally {
+    removeRoots(dir)
+  }
+})
+
+test('readSelfcheckReport: missing or corrupt reports are undefined', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-report-'))
+  try {
+    assert.equal(readSelfcheckReport(dir), undefined)
+    writeFileSync(path.join(dir, 'selfcheck.json'), 'not json', 'utf8')
+    assert.equal(readSelfcheckReport(dir), undefined)
+    writeFileSync(path.join(dir, 'selfcheck.json'), JSON.stringify({ ok: true }), 'utf8')
+    assert.equal(readSelfcheckReport(dir), undefined)
+  } finally {
+    removeRoots(dir)
+  }
+})
+
+test('apply: the startup selfcheck leaves a report on disk', async () => {
+  const roots = makeRoots()
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-report-'))
+  const stub = stubContext()
+  apply(stub.ctx, {
+    mediaRoot: roots.mediaRoot,
+    projectsRoot: roots.projectsRoot,
+    dataDir,
+    selfcheckDelayMs: 10,
+  })
+  try {
+    // No origin in this stub, so the three HTTP checks fail without any network
+    // call; the writable probe still passes and the report is written.
+    let report
+    for (let attempt = 0; attempt < 50 && report === undefined; attempt += 1) {
+      report = readSelfcheckReport(dataDir)
+      if (report === undefined) await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    assert.ok(report, 'expected a report after the startup check ran')
+    assert.equal(report.checks.length, 5)
+    assert.equal(report.ok, false)
+    assert.equal(report.checks.find((check) => check.name === 'projectsRootWritable').ok, true)
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot, dataDir)
+  }
+})
+
 /** Minimal Cordis context: records what apply() registers. */
 function stubContext() {
   const routes = []
@@ -248,6 +310,11 @@ function stubContext() {
   let origin
   const ctx = {
     logger: { info: () => {}, error: () => {} },
+    // The host context itself owns `effect`; the injected web context has its own.
+    effect: (callback) => {
+      callback()
+      return () => {}
+    },
     inject(_dependencies, callback) {
       callback({
         on: (name, listener) => {
@@ -304,6 +371,7 @@ test('selfcheck route: five green checks over the real HTTP listener', async () 
   apply(stub.ctx, {
     mediaRoot: roots.mediaRoot,
     projectsRoot: roots.projectsRoot,
+    selfcheckOnStartup: false,
   })
   const created = createProject(roots.projectsRoot, { title: '真实链路项目' }, { now: FIXED })
   assert.equal(created.ok, true)

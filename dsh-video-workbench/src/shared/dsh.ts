@@ -38,6 +38,8 @@ export interface WebContext {
 
 export interface HostContext {
   inject(dependencies: string[], callback: (ctx: WebContext) => void): void
+  /** Optional in some profiles; features using it degrade to no-ops. */
+  effect?(callback: () => (() => void) | undefined, label?: string): () => void
   logger?: {
     info(message: string): void
     error(message: string): void

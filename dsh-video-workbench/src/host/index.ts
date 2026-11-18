@@ -16,11 +16,13 @@ import {
 } from '../shared/routes'
 
 import { hostLogger } from './adapters/logger'
+import { defer } from './adapters/lifecycle'
 import { withWebServer } from './adapters/web-server'
 import { contains, isFilesystemRoot, safeResolve } from './paths'
 import type { ProjectsConfig, ProjectsState } from './projects/root'
 import { resolveProjectsRoot } from './projects/root'
 import { runSelfcheck } from './selfcheck'
+import { readSelfcheckReport, writeSelfcheckReport } from './selfcheck-report'
 
 // Re-exported for tests and for the routes that share this wire contract.
 export {
@@ -46,6 +48,7 @@ export {
   writeProject,
 } from './projects/store'
 export { runSelfcheck } from './selfcheck'
+export { SELFCHECK_REPORT, readSelfcheckReport, writeSelfcheckReport } from './selfcheck-report'
 
 const MIME: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -72,6 +75,15 @@ export interface PluginConfig {
   projectsRoot?: string
   /** Optional renders copy target; never served by a route. */
   exportDir?: string
+  /** Plugin data dir for caches and the self-check report. */
+  dataDir?: string
+  /**
+   * Run `video_selfcheck` shortly after startup and write the report to
+   * `dataDir/selfcheck.json` (default true).
+   */
+  selfcheckOnStartup?: boolean
+  /** Delay before the startup self-check, in ms (default 3000). */
+  selfcheckDelayMs?: number
   requireToken?: boolean
 }
 
@@ -103,11 +115,19 @@ interface SelfcheckRouteOptions {
 type RangeBounds = { start: number; end: number }
 type ParsedRange = RangeBounds | 'invalid' | undefined
 
-export function defaultMediaRoot(): string {
-  const home = typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME.length > 0
+function dshHome(): string {
+  return typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME.length > 0
     ? process.env.DSH_HOME
     : path.join(os.homedir(), '.dsh')
-  return path.join(home, 'cache', 'dsh-video-workbench', 'media')
+}
+
+export function defaultMediaRoot(): string {
+  return path.join(dshHome(), 'cache', 'dsh-video-workbench', 'media')
+}
+
+/** Plugin data dir: caches, logs and the self-check report. */
+export function defaultDataDir(): string {
+  return path.join(dshHome(), 'cache', 'dsh-video-workbench')
 }
 
 /** Parse one `Range: bytes=` header. Returns undefined (no range), 'invalid', or bounds. */
@@ -370,6 +390,9 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
   const exportDir = typeof config.exportDir === 'string' && config.exportDir.trim().length > 0
     ? path.resolve(config.exportDir.trim())
     : undefined
+  const dataDir = typeof config.dataDir === 'string' && config.dataDir.trim().length > 0
+    ? path.resolve(config.dataDir.trim())
+    : defaultDataDir()
   const requireToken = config.requireToken !== false
   const token = randomBytes(24).toString('base64url')
 
@@ -418,10 +441,44 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
         projects,
       }),
     }, 'video-workbench:selfcheck')
+
+    // Leave a report on disk so M1 acceptance is checkable after a restart
+    // without DevTools or the token; `selfcheckOnStartup: false` disables it.
+    if (config.selfcheckOnStartup !== false) {
+      const delayMs = typeof config.selfcheckDelayMs === 'number'
+        && Number.isFinite(config.selfcheckDelayMs) && config.selfcheckDelayMs >= 0
+        ? config.selfcheckDelayMs
+        : 3000
+      defer(ctx, delayMs, 'video-workbench:selfcheck', () => {
+        void runSelfcheck({
+          getOrigin: () => server.origin(),
+          token,
+          requireToken,
+          mediaRoot,
+          projects,
+        }).then((result) => {
+          const failed = result.checks.filter((check) => !check.ok)
+          try {
+            writeSelfcheckReport(dataDir, result)
+          } catch (error) {
+            logger.error(`[video-workbench] 无法写入 selfcheck 报告: ${String(error)}`)
+          }
+          if (failed.length === 0) {
+            logger.info('[video-workbench] selfcheck: 5/5 通过')
+          } else {
+            logger.error(`[video-workbench] selfcheck ${result.checks.length - failed.length}/${result.checks.length} 通过：`
+              + failed.map((check) => `${check.name}（${check.detail}）`).join('；'))
+          }
+        }).catch((error: unknown) => {
+          logger.error(`[video-workbench] selfcheck 异常: ${String(error)}`)
+        })
+      })
+    }
   })
 
   logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`)
   logger.info(`[video-workbench] projects: ${projects.state}`
     + `${projects.root === undefined ? '' : ` (${projects.root})`}`
     + `${exportDir === undefined ? '' : `, export: ${exportDir}`}`)
+  logger.info(`[video-workbench] data dir: ${dataDir}`)
 }

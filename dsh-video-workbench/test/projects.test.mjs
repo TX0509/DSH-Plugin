@@ -135,7 +135,7 @@ function call(origin, target, { headers = {} } = {}) {
 async function withPlugin(run) {
   const { mediaRoot, projectsRoot } = temporaryRoots()
   const stub = stubContext()
-  apply(stub.ctx, { mediaRoot, projectsRoot })
+  apply(stub.ctx, { mediaRoot, projectsRoot, selfcheckOnStartup: false })
   const token = tokenOf(stub.listeners)
   assert.equal(typeof token, 'string')
 
@@ -390,7 +390,7 @@ test('projects route: answers 404 for missing files and 400 for traversal', asyn
 test('apply: projects route is absent until projectsRoot is configured', async () => {
   const { mediaRoot } = temporaryRoots()
   const stub = stubContext()
-  apply(stub.ctx, { mediaRoot })
+  apply(stub.ctx, { mediaRoot, selfcheckOnStartup: false })
   try {
     assert.equal(stub.routes.some((route) => route.path === PROJECTS_PATH), false)
     const token = tokenOf(stub.listeners)

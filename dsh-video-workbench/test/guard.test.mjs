@@ -54,7 +54,7 @@ function emitIndexInject(listeners, table, peer) {
 
 test('index injection: an owner page receives the token global', () => {
   const stub = stubContext()
-  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media') })
+  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media'), selfcheckOnStartup: false })
 
   const table = []
   emitIndexInject(stub.listeners, table, { principal: { kind: 'owner' } })
@@ -67,7 +67,7 @@ test('index injection: an owner page receives the token global', () => {
 
 test('index injection: non-owner and missing peers receive nothing', () => {
   const stub = stubContext()
-  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media') })
+  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media'), selfcheckOnStartup: false })
 
   for (const peer of [{ principal: { kind: 'guest' } }, { principal: undefined }, undefined]) {
     const table = []
@@ -96,7 +96,7 @@ test('matchesEtag: accepts exact, weak, listed and wildcard validators', () => {
 
 test('apply registers both routes and the index injector', () => {
   const stub = stubContext()
-  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media') })
+  apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media'), selfcheckOnStartup: false })
 
   assert.deepEqual(
     stub.routes.map((route) => [route.kind, route.path]).sort(),
@@ -108,7 +108,7 @@ test('apply registers both routes and the index injector', () => {
 
 test('apply falls back to the default root when configured with a filesystem root', () => {
   const stub = stubContext()
-  apply(stub.ctx, { mediaRoot: path.parse(process.cwd()).root })
+  apply(stub.ctx, { mediaRoot: path.parse(process.cwd()).root, selfcheckOnStartup: false })
 
   assert.equal(stub.routes.length, 3)
   const message = stub.messages.find((entry) => entry.includes('filesystem root'))

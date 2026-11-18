@@ -36,6 +36,9 @@
     "dsh": "0.2.2-rc.3"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify": "node scripts/verify.mjs",
     "test": "node --test",
     "check": "node --check index.js && node --check client.js && node --test",
     "install-plugin": "node scripts/install.mjs",
@@ -52,5 +55,11 @@
       "platform": "web",
       "immediately": true
     }
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "esbuild": "0.28.2",
+    "typescript": "^7.0.2"
   }
 }

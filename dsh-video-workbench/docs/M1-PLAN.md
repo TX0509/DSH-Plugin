@@ -1,8 +1,8 @@
 # M1 执行计划：骨架与播放
 
-> 状态：**步骤 1–4 已完成**（`chore: 引入 TypeScript 与 esbuild 构建`、
-> `refactor: 抽取 DSH 适配层`、`feat: 加入项目模型与项目路由`、`feat: 增加 video_selfcheck`；
-> `verify` 全绿，测试 62 项）；从步骤 5 继续。基线 v0.0.4（M0 完成）。
+> 状态：**步骤 1–5 已完成**（构建骨架、DSH 适配层、项目模型与项目路由、`video_selfcheck`、
+> 文档与版本 0.1.0）；`verify` 全绿，测试 65 项。
+> **剩余**：桌面端完全重启后的实机验收（第 10 节里带「实机」的项），清单见 [README](../README.md)「M1 验收」。
 > 本文替代 [PLAN.md](../PLAN.md) 里 M1 那一行，给出可以照着执行的步骤、目录、命令与验收标准。
 > 范围：Windows + DSH Desktop；Web / macOS 不在 M1 验收范围。
 
@@ -340,15 +340,22 @@ M1 版本只做能在 Host 内完成、不需要渲染的检查：
 
 ## 10. 验收清单（M1 DoD）
 
-- [ ] `pnpm verify` 全绿（类型、构建、产物一致、语法、测试）
-- [ ] `node --check index.js client.js` 通过
-- [ ] 产物已提交，且与源码一致（verify 校验）
-- [ ] Desktop 重启后：▶ 打开、`tokenPresent: true`、`media.status: 206`、播放与拖动、Esc（视频聚焦）、错误态 + 重试
+自动化项已验证（`node scripts/verify.mjs`）：
+
+- [x] `pnpm verify` 全绿（类型、DSH 边界、构建、产物一致、语法、测试 65 项）
+- [x] `node --check index.js client.js` 通过
+- [x] 产物已提交，且与源码一致（verify 校验）
+- [x] 仓库无 `node_modules` 提交
+
+实机项待执行（需要完全退出并重新打开 DSH，清单见 [README](../README.md)「M1 验收」）：
+
+- [ ] Desktop 重启后：▶ 打开、`tokenPresent: true`、`media.status: 206`、播放与拖动、
+      Esc（视频聚焦）、错误态 + 重试
+- [ ] `selfcheck.json` 的 5 项检查全绿（`routeMounted` / `tokenRequired` / `mediaProbe` /
+      `projectsRootWritable` / `projectsRoute`）
 - [ ] 项目路由：创建项目 → 列表 → 读取 `project.json` → 播放 `renders/` 下的文件
-- [ ] `video_selfcheck` 5 项全绿
 - [ ] 亮/暗主题、窄窗口快速过一遍（完整矩阵留 M6）
-- [ ] README / COMPAT / UPGRADE-PLAYBOOK 更新
-- [ ] 仓库无 `node_modules` 提交
+- [ ] 把结果补进 README / COMPAT / HANDOFF
 
 ## 11. 风险
 

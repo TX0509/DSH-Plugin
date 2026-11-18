@@ -58,15 +58,29 @@ profile 的 `pnpm-lock.yaml` / `.modules.yaml` 会在下一次插件管理操作
 
 ## 配置（M1 起）
 
-M0 不需要配置。M1 增加项目后需要设置两个目录（详见 [docs/M1-PLAN.md](docs/M1-PLAN.md)）：
+M0 不需要配置。M1 增加项目能力后，需要给 profile 的 `cordis.patch.yml` 加一条配置
+（该文件与插件一样由 Desktop 独占管理，**先完全退出 DSH 再编辑**）：
+
+```yaml
+- id: video-workbench
+  name: dsh-video-workbench
+  config:
+    projectsRoot: D:/Terry/Videos/dsh-video/video-projects
+    exportDir: D:/Terry/Videos/dsh-video/video-exports
+```
 
 | 配置项 | 必填 | 说明 |
 | --- | --- | --- |
-| `projectsRoot` | 是 | 项目源码、素材与成片；推荐 D 盘专用 DSH 工作区下的 `video-projects/`，**不会默认写 C 盘** |
-| `exportDir` | 否 | 渲染后另存成片，便于集中查找 |
+| `projectsRoot` | 是 | 所有项目的父目录；推荐 D 盘专用 DSH 工作区下的 `video-projects/`，**不会默认写 C 盘** |
+| `exportDir` | 否 | 渲染后另存成片（M2 起生效），媒体/项目路由都不暴露它 |
+| `mediaRoot` | 否 | 媒体根目录，默认 `$DSH_HOME/cache/dsh-video-workbench/media` |
+| `dataDir` | 否 | 插件数据目录，默认 `$DSH_HOME/cache/dsh-video-workbench`；自检报告写在这里 |
+| `selfcheckOnStartup` | 否 | 默认 `true`；启动 3 秒后自动跑 `video_selfcheck` 并写报告 |
+| `selfcheckDelayMs` | 否 | 默认 `3000`；启动自检延迟 |
+| `requireToken` | 否 | 默认 `true`；不推荐关闭 |
 
-未配置 `projectsRoot` 时插件仍可加载，但项目功能禁用，`video_selfcheck` 会报告 `projectsRoot: unset`。
-具体配置写法随 M1 的 `Config` schema 一起提供。
+未配置 `projectsRoot` 时插件仍可加载，但项目功能禁用，`video_selfcheck` 的
+`projectsRootWritable` / `projectsRoute` 会失败并写进报告。
 
 ## 验证安装
 
@@ -74,7 +88,24 @@ M0 不需要配置。M1 增加项目后需要设置两个目录（详见 [docs/M
 node scripts/install.mjs --check
 ```
 
-界面上：composer 左侧出现 ▶ 按钮，点开能看到播放器与诊断信息。
+启动 DSH 后：
+
+1. composer 左侧出现 ▶ 按钮，点开能看到播放器与诊断信息；
+2. 等约 3 秒，读取启动自检报告：
+
+   ```powershell
+   Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Raw
+   ```
+
+   期望 `"ok": true` 且 `checks` 里 5 项都为 `"ok": true`。若未配置 `projectsRoot`，
+   两项项目检查会失败并说明原因。
+3. 页面 DevTools 控制台也可以手动复跑：
+
+   ```js
+   const t = window.__DSH_VIDEO_WORKBENCH__.token
+   const r = await fetch(`/api/video-workbench/selfcheck?t=${t}`).then((x) => x.json())
+   console.table(r.checks); r.ok
+   ```
 
 ## 升级
 
@@ -93,7 +124,7 @@ node scripts/install.mjs --uninstall --profile desktop
 脚本会移除链接、`dependencies` 与 `bundles` 登记，并保留一份 `package.json` 备份。
 **不会**删除以下数据，需要时手动清理：
 
-- `$DSH_HOME\cache\dsh-video-workbench\`（运行时与媒体缓存）
+- `$DSH_HOME\cache\dsh-video-workbench\`（运行时、媒体缓存与 `selfcheck.json`）
 - 你的项目目录（`projectsRoot`）
 
 卸载后重新打开 DSH，确认侧栏与 composer 不再出现插件入口。
@@ -107,4 +138,6 @@ node scripts/install.mjs --uninstall --profile desktop
 | 播放器提示“未获取到访问令牌” | 页面启动时未拿到注入的 token；完全退出后重开 |
 | 播放返回 401 | 同上；token 每个进程重新生成，旧页面会失效 |
 | 播放返回 404 | `mediaRoot` 下没有该文件；默认在 `$DSH_HOME\cache\dsh-video-workbench\media` |
+| 自检报告 `ok: false` | 看 `checks` 里失败项的 `detail`：未配置 `projectsRoot`、缺 `test.mp4`、或未完全重启都可能导致 |
+| `/api/video-workbench/selfcheck` 返回纯文本 `unauthorized` | 该路由没挂载（返回的是网关 401）；确认插件已加载并完全重启 DSH |
 | 渲染失败（M2 起） | 检查 Chrome 可用性与 ffmpeg；见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md) |

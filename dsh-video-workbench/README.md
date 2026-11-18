@@ -1,6 +1,11 @@
 # dsh-video-workbench
 
-DSH Desktop 的短视频制作工作台插件。当前处于 **M0（链路验证）完成** 阶段，只包含链路验证所需的最小实现。
+DSH Desktop 的短视频制作工作台插件。当前处于 **M1（骨架与播放）代码完成** 阶段：
+TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只读项目路由、`video_selfcheck` 已就位；
+渲染与素材/配音在 M2–M3。
+
+> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物一致、语法、65 项测试）。
+> 桌面端**重启后的实机验收尚未执行**，清单见下方「M1 验收」。
 
 ![视频工作台浮层](docs/m0-overlay.png)
 
@@ -17,22 +22,48 @@ DSH Desktop 的短视频制作工作台插件。当前处于 **M0（链路验证
 | v0.0.2 | Esc 关闭 / 焦点归还 | ✅ 关闭后焦点回到 ▶ 按钮 |
 | v0.0.3 | 重启后复测 | ✅ `ping` 不再返回 `node`；token、206、播放至 1.56s 均通过 |
 | v0.0.4 | 重启后全链路复测 | ✅ token、206、播放、拖动 seek、错误态与"重试"、视频聚焦时 Esc 关闭 全部通过 |
+| v0.1.0（M1） | 类型检查 / 构建 / 产物一致 / DSH 边界 / 65 项测试 | ✅ `node scripts/verify.mjs` 全绿 |
+| v0.1.0（M1） | 桌面端重启后的实机验收 | ⏳ **待执行**（清单见文末） |
 
-> 拖动进度条在 v0.0.1 验证；v0.0.2 / v0.0.3 只复测了同一路径的 206 分段读取与播放。
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 
 ## 当前能力
 
-- `GET /api/video-workbench/ping?t=<token>`：健康检查，返回媒体目录存在性与是否要求 token。
+- `GET /api/video-workbench/ping?t=<token>`：健康检查，返回媒体目录存在性、是否要求 token、
+  项目功能状态（`projects: ready | unset | invalid`）。
 - `GET /api/video-workbench/media?path=<name>&t=<token>`：带 Range 的媒体读取。
-  - 路径白名单：最多 5 段，拒绝 `..`、绝对路径、隐藏文件、Windows 保留字符；支持中文名。
-  - 符号链接逃逸会被拒绝（按 `realpath` 校验真实路径仍在 `mediaRoot` 内）。
-  - 支持 `206` / `416` / `304`（`If-None-Match`、`If-Range`）、`HEAD`，其余方法 `405`。
+- `GET /api/video-workbench/projects?path=<slug>/<file>&t=<token>`：带 Range 的**项目文件**读取
+  （`project.json`、`renders/v1.mp4` 等）；`projectsRoot` 未配置时不挂载。
+- `GET /api/video-workbench/selfcheck?t=<token>`：`video_selfcheck` 的 5 项检查，返回
+  `{ ok, checks: [{ name, ok, detail }] }`；启动 3 秒后也会自动跑一次并把结果写入
+  `$DSH_HOME/cache/dsh-video-workbench/selfcheck.json`。
 - 客户端：composer 左侧 ▶ 按钮 → `shell.overlay` 浮层 → 播放测试视频 + 诊断信息。
+
+三条文件路由共用同一套实现与同一 token：
+
+- 路径白名单：最多 5 段，拒绝 `..`、绝对路径、隐藏文件、Windows 保留字符；支持中文名。
+- 符号链接逃逸会被拒绝（按 `realpath` 校验真实路径仍在根目录内）。
+- 支持 `206` / `416` / `304`（`If-None-Match`、`If-Range`）、`HEAD`，其余方法 `405`。
+
+## 项目模型（M1）
+
+`<projectsRoot>/<slug>/` 下：
+
+```text
+project.json        # schemaVersion 1：标题、画幅、fps、样式、分镜
+composition/        # M2 起放 HyperFrames 合成
+assets/             # 素材
+renders/            # 成片（v1.mp4 …）
+```
+
+- slug 固定为创建时间的 `YYYYMMDD-HHmmss`，目录名即项目 id，创建后不改；标题存 `project.json`。
+- 写入是原子的（临时文件 + rename）；读取先做 `schemaVersion` 迁移再校验，校验失败会返回
+  可直接展示的中文错误。
+- 项目 API 目前只导出给 Host/测试使用，客户端 UI 在 M2 之后接入。
 
 ## 鉴权
 
-媒体与健康检查路由都要求 `t` 查询参数（或 `x-dsh-video-workbench-token` 头）。
+所有路由都要求 `t` 查询参数（或 `x-dsh-video-workbench-token` 头）。
 token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `global` 行注入页面
 （`window.__DSH_VIDEO_WORKBENCH__.token`）；注入只面向 owner 页面，非 owner 的读者页拿不到。
 页面本身需要 Host 鉴权，因此本机其它进程拿不到 token。
@@ -44,46 +75,95 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 如需临时关闭（不推荐）：在 patch 行配置 `requireToken: false`。
 
-## 安装
+## 配置（M1）
 
-见 [INSTALL.md](INSTALL.md)。Desktop 的 profile 由应用独占管理，安装或更新前需要**完全退出 DSH**。
+在 profile 的 `cordis.patch.yml` 里按 id 覆盖本插件的 Config：
+
+```yaml
+- id: video-workbench
+  name: dsh-video-workbench
+  config:
+    projectsRoot: D:/Terry/Videos/dsh-video/video-projects
+    exportDir: D:/Terry/Videos/dsh-video/video-exports
+```
+
+| 配置项 | 默认 | 说明 |
+| --- | --- | --- |
+| `projectsRoot` | 无（必填才能启用项目功能） | 所有项目的父目录；未配置时项目路由与项目检查禁用，**不会**默认写 C 盘 |
+| `exportDir` | 无 | 渲染后另存成片（M2 起生效）；不通过路由暴露 |
+| `mediaRoot` | `$DSH_HOME/cache/dsh-video-workbench/media` | 媒体演示与（M2 起）素材缓存 |
+| `dataDir` | `$DSH_HOME/cache/dsh-video-workbench` | 插件数据目录，`selfcheck.json` 写在这里 |
+| `selfcheckOnStartup` | `true` | 启动后自动跑一次 `video_selfcheck` |
+| `selfcheckDelayMs` | `3000` | 启动自检延迟（等待 web 监听绑定端口） |
+| `requireToken` | `true` | 是否要求 token（不推荐关闭） |
 
 ## 数据位置
 
-媒体根目录默认 `$DSH_HOME/cache/dsh-video-workbench/media`，可用配置项 `mediaRoot` 覆盖。
-
-M1 起还会引入两个目录（详见 [docs/M1-PLAN.md](docs/M1-PLAN.md)）：
-
-- `projectsRoot`（**必填**）：项目源码、素材与成片；推荐放在 D 盘专用 DSH 工作区的 `video-projects/`。
-  未配置时只保留 M0 的媒体演示，项目功能禁用——**不会默认落到 C 盘**。
-- `exportDir`（可选）：渲染完成后把成片另存一份，便于集中查找；媒体路由不暴露该目录。
+| 位置 | 内容 | 可删除 |
+| --- | --- | --- |
+| `$DSH_HOME/cache/dsh-video-workbench/media` | 媒体演示文件（`test.mp4`） | 可，媒体探测会提示缺失 |
+| `$DSH_HOME/cache/dsh-video-workbench/selfcheck.json` | 最近一次启动自检结果 | 可，下次启动重写 |
+| `<projectsRoot>/<slug>/project.json` | 项目唯一可编辑真相 | **不可**，备份它 |
+| `<projectsRoot>/<slug>/assets/` | 素材与署名 | **不可**，需重新下载/生成 |
+| `<projectsRoot>/<slug>/renders/` | 成片 | 可随时重渲染 |
 
 响应带 `Cache-Control: private, max-age=3600` 与 `ETag`。覆盖同名文件后，浏览器可能沿用旧片段，
 因此渲染产物建议按版本命名（`v1.mp4`、`v2.mp4`），而不是反复覆盖同一个文件名。
 
+## 安装
+
+见 [INSTALL.md](INSTALL.md)。Desktop 的 profile 由应用独占管理，安装或更新前需要**完全退出 DSH**。
+
+## M1 验收
+
+自动化部分已通过：
+
+```powershell
+cd dsh-video-workbench
+node scripts/verify.mjs        # 类型 + DSH 边界 + 构建 + 产物一致 + 语法 + 测试（65）
+```
+
+实机部分（需要完全退出并重新打开 DSH）：
+
+1. 启动 3 秒后读取 `$DSH_HOME\cache\dsh-video-workbench\selfcheck.json`，确认
+   `"ok": true` 且 5 项检查全部通过（`routeMounted` / `tokenRequired` / `mediaProbe` /
+   `projectsRootWritable` / `projectsRoute`）。
+2. 页面 DevTools 控制台复跑（token 由页面注入）：
+   ```js
+   const t = window.__DSH_VIDEO_WORKBENCH__.token
+   const r = await fetch(`/api/video-workbench/selfcheck?t=${t}`).then((x) => x.json())
+   console.table(r.checks); r.ok
+   ```
+3. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、能播放与拖动、
+   视频聚焦时 Esc 关闭、错误态可"重试"。
+4. 项目路由：`/projects?path=<slug>/project.json` 返回 200，`renders/` 下的 mp4 返回 206。
+5. 亮色/暗色、侧栏展开/收起、窄窗口快速过一遍（完整矩阵留 M6）。
+
 ## 兼容性
 
 - DSH：`0.2.2-rc.3`（精确匹配，升级后插件会停用等待复测，见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)）
-- 平台：Windows Desktop 实测；Web 与 macOS 未验证
+- 平台：Windows Desktop；Web 与 macOS 未验证
 - 运行时（M2 起）：需要可用的 Chrome；本机实测**优先复用系统 Chrome**，自动下载不可用
 - Node：`>=20`；实测使用 DSH 托管运行时 `v24.21.0`
 - 实测矩阵见 [docs/COMPAT.md](docs/COMPAT.md)
 
 ## 已知限制
 
+- 项目功能没有 UI（M2 起接入）；客户端浮层仍是 M0 的播放器 + 诊断信息。
 - 界面文案暂为中文硬编码，未接入 Client locale 服务（仅插件管理器的标题/描述做了中英双语）。
 - 浮层是全屏模态；macOS 的窗口拖拽区域尚未适配（`data-window-drag-exclude`）。
-- 还没有 `host/adapters`、`client/adapters` 隔离层（M1 建立）。
+- 客户端 bundle 目前仍保留历史遗留的双层模块注册（见 [docs/HANDOFF.md](docs/HANDOFF.md) §9），
+  行为与 M0 一致，清理需要一次实机重启验证。
 
 ## 开发
 
 ```sh
-node --check index.js
-node --check client.js
-node --test
+node scripts/build.mjs     # src/ → 根目录 index.js / client.js
+node scripts/verify.mjs    # 一条命令跑完全部检查
+node --test                # 只跑测试（65 项）
 ```
 
 ## 未完成
 
-M1–M6 见 [PLAN.md](PLAN.md)；M1 的目录、构建、schema 与验收步骤见 [docs/M1-PLAN.md](docs/M1-PLAN.md)；
+M2–M6 见 [PLAN.md](PLAN.md)；M1 的目录、构建、schema 与验收步骤见 [docs/M1-PLAN.md](docs/M1-PLAN.md)；
 下一个人/下一个会话请先读 [docs/HANDOFF.md](docs/HANDOFF.md)。

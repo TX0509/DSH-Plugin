@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，对应提交 `feat: 增加 video_selfcheck`（M1 步骤 4 完成）。
+> 最后更新：2026-11-19，**M1 代码与文档完成**（版本 `0.1.0`）；仅剩桌面端重启验收。
 
 ## 1. 这是什么
 
@@ -10,8 +10,9 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M0 完成；M1 步骤 1–4 完成**（下一步：步骤 5 实机重启验收与文档）
-- 版本：`0.0.4`；分支 `main`；远端 `origin/main` 与本地同步
+- 当前阶段：**M0 完成；M1 代码/文档完成**（构建、适配层、项目模型与路由、`video_selfcheck`、文档）
+- 待办：**桌面端完全重启后的实机验收**（清单见 [README](../README.md)「M1 验收」与本文件 §6）
+- 版本：`0.1.0`；分支 `main`（本轮提交尚未 push）
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.3`
 
 ## 2. 一分钟上手
@@ -22,7 +23,7 @@ cd D:\Terry\Code\DSH-Plugin\dsh-video-workbench
 # 构建（源码 src/ → 根目录 index.js / client.js）
 node scripts/build.mjs
 
-# 全量校验：类型 → DSH 边界 → 构建 → 产物一致 → 语法 → 测试
+# 全量校验：类型 → DSH 边界 → 构建 → 产物一致 → 语法 → 测试（65 项）
 node scripts/verify.mjs
 
 # 只跑测试
@@ -30,6 +31,9 @@ node --test
 
 # 安装状态
 node scripts/install.mjs --check
+
+# 重启后的启动自检结果（需要先重启过 DSH）
+Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Raw
 ```
 
 工具链通过 DSH 托管运行时安装（`pnpm` 在 `%USERPROFILE%\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies`）。
@@ -40,17 +44,19 @@ node scripts/install.mjs --check
 
 ```text
 dsh-video-workbench/
-├── src/host/index.ts        # apply 组装、ping/file/selfcheck 路由、token、Range/ETag
-├── src/host/paths.ts        # safeResolve / isFilesystemRoot / contains
-├── src/host/adapters/       # web-server.ts（registerRoute / onIndexInject / getOrigin + owner 过滤）、logger.ts
-├── src/host/projects/       # schema.ts（v1 校验）、migrate.ts、store.ts（原子写、slug、CRUD）、root.ts（projectsRoot）
-├── src/host/selfcheck.ts    # video_selfcheck 的 5 项检查（真实 HTTP 探测）
-├── src/client/index.tsx     # ▶ 入口、浮层、播放器、错误重试
-├── src/client/adapters/     # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）、loader.ts
-├── src/shared/              # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
-├── index.js / client.js     # 构建产物（已提交，首行有生成标记）
+├── src/host/index.ts            # apply 组装、ping/media/projects/selfcheck 路由、token、Range/ETag
+├── src/host/paths.ts            # safeResolve / isFilesystemRoot / contains
+├── src/host/adapters/           # web-server.ts（registerRoute / onIndexInject / getOrigin + owner 过滤）
+│                                # logger.ts、lifecycle.ts（随插件生命周期清理的定时器）
+├── src/host/projects/           # schema.ts（v1 校验）、migrate.ts、store.ts（原子写、slug、CRUD）、root.ts
+├── src/host/selfcheck.ts        # video_selfcheck 的 5 项检查（真实 HTTP 探测）
+├── src/host/selfcheck-report.ts # 启动自检结果写盘 / 读取
+├── src/client/index.tsx         # ▶ 入口、浮层、播放器、错误重试
+├── src/client/adapters/         # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）、loader.ts
+├── src/shared/                  # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
+├── index.js / client.js         # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
-├── test/{range,media,guard,projects,selfcheck}.test.mjs   # 62 项
+├── test/{range,media,guard,projects,selfcheck}.test.mjs   # 65 项
 ├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
@@ -67,8 +73,9 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 
 1. **Desktop 页面 origin 是 `dsh-app://app`**。外壳把非静态请求转发到 Host 并注入 cookie，
    同时**剥掉 `origin`、原样转发 `Range`**。所以 Host 侧不要校验 Origin，相对路径能直接用。
-2. **插件路由不受 Host 鉴权保护**。`/api/*` 在插件路由未挂载时会落到网关并返回 401；
-   插件自己挂上后就必须自己鉴权——当前用随机 token（`?t=` 或 `x-dsh-video-workbench-token`）。
+2. **插件路由不受 Host 鉴权保护**。`/api/*` 在插件路由未挂载时会落到网关并返回
+   **纯文本 `unauthorized`**；插件自己挂上后返回的是本插件的 pretty JSON 401
+   （`{\n  "error": "unauthorized"\n}`）。这个差异可以判断路由是否真的挂载。
 3. **token 通过 `webserver/index-inject` 注入**（`(table, peer)`，只给 `peer.principal.kind === 'owner'` 的页面）。
    该注入**只在应用启动时采集一次**：刷新页面不够，必须完全退出并重开 DSH。
 4. **客户端 bundle 图也只在启动时合成**。Host 改动可以热生效，客户端改动必须重启。
@@ -78,101 +85,64 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 7. **构建约定**：client 必须 classic JSX（`React.createElement`），模块表只提供 `react`，
    没有 `react/jsx-runtime`；产物要包在 `window.__ModuleLoader__.load({ id, factory(require) })` 里。
 8. **测试用 `node:http` + `agent:false`**，不要用全局 `fetch`：连接池会与临时端口复用竞争，
-   曾出现约 1/50 的偶发失败。
+   曾出现约 1/50 的偶发失败。（`video_selfcheck` 走真实 `fetch` 是产品行为，测试里可注入 fake fetch。）
 9. **HyperFrames**（M2 起）：固定 `0.6.33`；Chrome 自动下载在本机网络不可用，要用
    `HYPERFRAMES_BROWSER_PATH` 指向系统 Chrome；pnpm 需要 `--allow-build` 才能装好 ffmpeg/onnxruntime。
 10. **`webServer.getOrigin()` 能拿到真实 `http://127.0.0.1:<port>`**：监听绑定后才可用，之前会 throw。
     `video_selfcheck` 用它做真实 HTTP 自检（而不是只调 handler），访问器在
     `src/host/adapters/web-server.ts` 里包了 try/catch，绑定前返回 `undefined`。
+11. **启动自检靠定时器**：`apply` 里 `defer(ctx, 3000, ...)`（`adapters/lifecycle.ts`）在监听绑定后跑自检，
+    结果写到 `dataDir/selfcheck.json` 并打日志；`selfcheckOnStartup: false` 可关闭。
+12. **profile 侧配置按 id 覆盖**：profile 的 `cordis.patch.yml` 写
+    `- id: video-workbench` / `name: dsh-video-workbench` / `config: {...}` 即可覆盖插件 Config；
+    运行中手改可能被应用回写覆盖，改动前后都确认一次（备份在 profile 目录）。
 
 ## 5. 已确认的决定
 
 | 项 | 结论 |
 | --- | --- |
 | 平台 | Windows + DSH Desktop；Web/macOS 不验收 |
-| 项目根 | `projectsRoot` **必填**，默认放 `D:\Terry\Videos\dsh-video\video-projects`（D 盘专用工作区，不占 C 盘）；未配置时项目功能禁用 |
-| 导出目录 | `exportDir` 可选，`D:\Terry\Videos\dsh-video\video-exports`；媒体路由不暴露 |
+| 项目根 | `projectsRoot` **必填**，放 `D:\Terry\Videos\dsh-video\video-projects`（D 盘专用工作区，不占 C 盘）；未配置时项目功能禁用 |
+| 导出目录 | `exportDir` 可选，`D:\Terry\Videos\dsh-video\video-exports`；媒体/项目路由都不暴露 |
 | slug | 时间戳 `YYYYMMDD-HHmmss`，目录创建后不可变；标题存 `project.json` |
+| 自检报告 | `dataDir/selfcheck.json`，`dataDir` 默认 `$DSH_HOME/cache/dsh-video-workbench` |
 | 运行时缓存 | 留默认位置（约 1.8 GB 在 C 盘），M2 不迁移 |
 | 生图 / TTS | 火山方舟 Seedream / 火山 TTS + 本地 Kokoro 兜底（M3 实现） |
 
 工作区目录已建好（`video-projects/`、`video-exports/`；`spike-m0/` 是 M0 渲染测试遗留）。
+Desktop profile 已写入上面的 `projectsRoot` / `exportDir`（备份：profile 目录下
+`cordis.patch.yml.bak-video-workbench-*`）。
 
-## 6. 接下来做什么（M1 步骤 5）
+## 6. M1 状态与剩余验收
 
-详细方案见 `docs/M1-PLAN.md`。按顺序做，每步一个提交，每步结束 `node scripts/verify.mjs` 必须全绿。
+M1 五个步骤全部完成（提交见 `git log --oneline`）：
 
-### 步骤 2：抽取 DSH 适配层 ✅ 已完成
+| # | 提交 | 内容 |
+| --- | --- | --- |
+| 1 | `chore: 引入 TypeScript 与 esbuild 构建` | src/ 迁移、build/verify、产物提交 |
+| 2 | `refactor: 抽取 DSH 适配层` | host/client adapters、`shared/routes.ts`、`dsh boundary` 检查 |
+| 3 | `feat: 加入项目模型与项目路由` | schema/migrate/store、`projectsRoot`/`exportDir`、`/projects` 路由 |
+| 4 | `feat: 增加 video_selfcheck` | 5 项检查、`/selfcheck` 路由、`getOrigin()` |
+| 5 | `docs: 更新 M1 验收记录` | README/INSTALL/COMPAT/HANDOFF/M1-PLAN、版本 0.1.0、启动自检报告 |
 
-提交 `refactor: 抽取 DSH 适配层`：
+自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物一致、语法、65 项测试）。
 
-- `src/host/adapters/web-server.ts`：`withWebServer(ctx, setup)` + `registerRoute` / `onIndexInject`，
-  owner 过滤收进适配层（业务只拿到注入表，不再判断 peer）；
-- `src/host/adapters/logger.ts`：`ctx.logger` 缺失时 no-op；
-- `src/client/adapters/slots.ts`：`registerEntry` / `registerOverlay`；
-- `src/client/adapters/context.ts`：token 读取、`document.baseURI` 解析、样式注入；
-- `src/client/adapters/loader.ts`：`loadClientModule`（`__ModuleLoader__` 只在这里出现）；
-- `src/shared/routes.ts`：路径、token 全局名、token 头名单点定义；
-- `scripts/verify.mjs` 新增 `dsh boundary` 检查，防止后续步骤把 DSH 调用写回业务代码。
+**剩余：桌面端完全重启后的实机验收**（本轮会话运行在 DSH 内部，重启会终止会话，因此未执行）：
 
-验收：`node --test` 仍为 36 项全绿；`node scripts/verify.mjs` 全绿。
-**未做**：客户端 bundle 有变化，但只在静态层面校验，**尚未实机重启验证**（步骤 5 一并做）。
+1. 完全退出 DSH（含托盘图标），重新打开；
+2. 等 3 秒后读 `$DSH_HOME\cache\dsh-video-workbench\selfcheck.json`，确认 `"ok": true`、5 项全绿；
+3. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、播放/拖动、Esc、错误态重试；
+4. 项目路由：`/projects?path=<slug>/project.json` 200、`renders/` 下的 mp4 206；
+5. 亮/暗主题、侧栏展开/收起、窄窗口快速过一遍；
+6. 把结果补进 `README.md` 的「已验证」表与 `docs/COMPAT.md`。
 
-### 步骤 3：项目模型与项目路由 ✅ 已完成
-
-提交 `feat: 加入项目模型与项目路由`：
-
-- `src/host/projects/schema.ts`：`project.json` v1 类型 + 手写校验器 `validateProject()`，
-  返回 `{ ok, project }` 或 `{ ok: false, errors }`；错误信息可直接展示给用户；
-  `aspect`/`voice`/`captions` 有文档化默认值，asset 路径统一规范成 `/` 分隔并拒绝穿越、绝对路径、隐藏名。
-- `src/host/projects/migrate.ts`：`migrateProject()`，缺 `schemaVersion` 视为 v1，未知/未来版本报错。
-- `src/host/projects/store.ts`：`createProject` / `readProject` / `writeProject` / `listProjects` /
-  `slugFor` / `defaultScene` / `ensureProjectRoot`；原子写（`.project.json.tmp-*` + rename，失败清理）；
-  slug 为本地时间 `YYYYMMDD-HHmmss`，同秒冲突加 `-2`；`read` 先迁移再校验，并校验 id 与目录名一致。
-- `Config` 新增 `projectsRoot`（未配置时项目功能禁用，媒体路由照旧）、`exportDir`（暂只记录，M2 用）。
-- 新增 `/api/video-workbench/projects` 前缀路由：与 `/media` 同一个 `createFileHandler`（只读、Range/ETag、
-  同一 token）。`projectsRoot` 为 `unset`/`invalid` 时不挂载该路由；`invalid` 只写日志，不影响启动。
-- `ping` 新增 `projects` 字段（`ready` / `unset` / `invalid`），不返回绝对路径。
-- `src/host/paths.ts`：`safeResolve` / `isFilesystemRoot` / `contains` 从 `index.ts` 抽出，路由与 store 共用。
-- 测试新增 17 项（`test/projects.test.mjs`），总数 **53**；`verify` 全绿。
-- 导出到 `index.js` 的测试面：`validateProject`、`migrateProject`、`schemaVersion`、`slugFor`、
-  `createProject`、`readProject`、`writeProject`、`listProjects`、`defaultScene`、`ensureProjectRoot`。
-
-**未做**：客户端仍未使用项目路由（M2 起接）；`exportDir` 尚无写入逻辑；同样**未实机重启验证**（步骤 5）。
-
-### 步骤 4：video_selfcheck ✅ 已完成
-
-提交 `feat: 增加 video_selfcheck`：
-
-- `src/host/selfcheck.ts`：`runSelfcheck()` 跑 5 项检查，输出 `{ ok, checks: [{ name, ok, detail }] }`；
-  名称固定为 `routeMounted` / `tokenRequired` / `mediaProbe` / `projectsRootWritable` / `projectsRoute`，
-  每项都带可读 `detail`，单项失败不影响其它项。
-- 路由探测走**真实 HTTP**：用 `webServer.getOrigin()`（见 §4 第 10 条）请求
-  `/api/video-workbench/ping`（匿名必须 401 且是本插件的 JSON，带 token 必须 200 且 `requireToken` 与配置一致）；
-  只有 handler 能跑通、但路由没挂载时，这里会失败。
-- `tokenRequired` 用匿名/带 token 两次 ping 的结果与配置比对，不是简单回显配置。
-- 媒体探测读 `mediaRoot/test.mp4` 的 0–99 字节，必须 206；项目探测读最新项目的 `project.json` 必须 200，
-  没有项目时记为通过并注明"跳过"。
-- `projectsRootWritable` 在根下写入并删除 `.selfcheck-*.tmp`；未配置时失败并提示去配置。
-- 新增路由 `GET /api/video-workbench/selfcheck?t=<token>`（token 规则同其它路由），
-  供实机验收时在页面控制台直接调用；`fetchImpl` / `timeoutMs` / `getOrigin` 可注入，测试用 fake fetch。
-- `webServer` 适配层新增 `origin()`（内部 try/catch，绑定前返回 undefined）；
-  `src/shared/dsh.ts` 补 `getOrigin(): string` 类型。
-- 测试新增 9 项（`test/selfcheck.test.mjs`，含一条真实 HTTP 监听 + 真实 fetch 的集成用例），总数 **62**。
-
-实机验收时在页面 DevTools 控制台执行（token 由 index 注入）：
+也可以在页面 DevTools 控制台手动复跑：
 
 ```js
 const t = window.__DSH_VIDEO_WORKBENCH__.token
 const r = await fetch(`/api/video-workbench/selfcheck?t=${t}`).then((x) => x.json())
 console.table(r.checks); r.ok
 ```
-
-### 步骤 5：实机验收与文档（0.5 人日）
-
-- 完全重启 DSH，逐项过 M1 DoD（M1-PLAN 第 10 节）。
-- 更新 README / COMPAT / 截图。
-- 提交：`docs: 更新 M1 验收记录`
 
 ## 7. M2 及之后（概要）
 
@@ -184,13 +154,15 @@ M4 Agent 工具主路径、M5 微调工作台、M6 交付打磨。M2 开工前�
 
 ```powershell
 cd D:\Terry\Code\DSH-Plugin
-git log --oneline -3
+git log --oneline -5
 git status --short
 cd dsh-video-workbench
 node scripts/verify.mjs
+Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Raw
 ```
 
-全绿说明环境正常，直接从「步骤 5」开始；任何一步失败，先修 `verify` 再动业务代码。
+`verify` 全绿说明环境正常；`selfcheck.json` 存在且 `ok: true` 说明实机验收已过。
+任何一步失败，先修 `verify` 再动业务代码。
 
 ## 9. 已知未决/可选
 
@@ -198,9 +170,11 @@ node scripts/verify.mjs
   `load({ id, factory })` 包住整个 bundle（为了给工厂里的 `require` 提供作用域），
   而 `src/client/index.tsx` 的 `loadClientModule(...)` 在工厂执行时又对同一个 `id`
   注册一次。M0 实机通过说明外壳能容忍这种情况，但这是冗余，正常形态应只注册一次。
-  修复需要改构建包装（内层 export 改为 `module.exports` 直接返回插件对象）并**完全重启
-  DSH 实机验证**；不要在步骤 3/4 顺手改，留到一次带实机验收的提交。
+  修复需要改构建包装（内层 export 改为直接返回插件对象）并**完全重启 DSH 实机验证**；
+  建议和 M1 实机验收一起做。
+- Desktop profile 的 `cordis.patch.yml` 配置是**应用运行期间**写进去的；如果应用退出时回写覆盖，
+  需要按 §4 第 12 条重新加一次（内容见 [INSTALL.md](../INSTALL.md)「配置」）。
 - `package.json` 的 `files` 目前只含产物，不含 `src/` 与 `tsconfig.json`。link 安装无影响；
   若将来要发布 tgz 并允许他人重建，需要把源码一并纳入。
-- `exportDir` 的默认值尚未写进 `Config`（当前只是"可选、未配置不导出"）。
-- 工作区目录 `D:\Terry\Videos\dsh-video` 还没在 DSH 里注册成工作区（可选，仅影响浏览体验）。
+- `exportDir` 目前只有配置与日志，写入逻辑在 M2；工作区目录 `D:\Terry\Videos\dsh-video`
+  还没在 DSH 里注册成工作区（可选，仅影响浏览体验）。

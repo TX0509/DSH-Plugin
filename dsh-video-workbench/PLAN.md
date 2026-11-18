@@ -4,6 +4,8 @@
 > 平台范围：**Windows + DSH Desktop 优先**；Web 与 macOS 未验证，README 必须写明。
 > 当前 DSH：`0.2.2-rc.3`；渲染器：HyperFrames `0.6.33`（固定，不跟随 DSH 升级）。
 > M0 状态：**已完成**——渲染 10s@1080p = 15.2s、路由 206、`dsh-app://app` 下播放与拖动通过、取消无残留。结论见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
+> M1 状态：**代码与文档完成**（v0.1.0：构建、适配层、项目模型/路由、`video_selfcheck`；`verify` 全绿 + 65 项测试）；
+> 桌面端重启验收待执行，清单见 [docs/M1-PLAN.md](docs/M1-PLAN.md) 第 10 节。
 > M1 执行细节（目录、构建、schema、步骤、DoD）见 [docs/M1-PLAN.md](docs/M1-PLAN.md)。
 
 ## 0. 决策记录

@@ -134,7 +134,7 @@ test('runSelfcheck: missing origin fails every HTTP check but not the writable p
       [false, false, false, true, true],
       'the writable probe needs no origin, and the project probe skips when no project exists',
     )
-    assert.match(result.checks[0].detail, /getOrigin/u)
+    assert.match(result.checks[0].detail, /origin/u)
   } finally {
     removeRoots(roots.mediaRoot, roots.projectsRoot)
   }

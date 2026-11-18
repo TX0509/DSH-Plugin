@@ -56,6 +56,18 @@ profile 的 `pnpm-lock.yaml` / `.modules.yaml` 会在下一次插件管理操作
    - `dsh.profile.bundles` 增加 `"dsh-video-workbench"`
 4. 重新打开 DSH。
 
+## 配置（M1 起）
+
+M0 不需要配置。M1 增加项目后需要设置两个目录（详见 [docs/M1-PLAN.md](docs/M1-PLAN.md)）：
+
+| 配置项 | 必填 | 说明 |
+| --- | --- | --- |
+| `projectsRoot` | 是 | 项目源码、素材与成片；推荐 D 盘专用 DSH 工作区下的 `video-projects/`，**不会默认写 C 盘** |
+| `exportDir` | 否 | 渲染后另存成片，便于集中查找 |
+
+未配置 `projectsRoot` 时插件仍可加载，但项目功能禁用，`video_selfcheck` 会报告 `projectsRoot: unset`。
+具体配置写法随 M1 的 `Config` schema 一起提供。
+
 ## 验证安装
 
 ```powershell

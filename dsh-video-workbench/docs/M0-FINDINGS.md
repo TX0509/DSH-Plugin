@@ -90,7 +90,7 @@ Chrome 缓存位置暂无可控变量，只能通过 `HYPERFRAMES_BROWSER_PATH` 
 5. ✅ 拖动进度条：跳到 `0:08`、`当前 8.00s`，画面更新为末帧——证明 Range 逐段读取可用；
 6. ⚠️ Esc 关闭：**视频控件持有焦点时不生效**，点击卡片空白处后再按 Esc 才关闭。
 
-## M0 暴露的两个 UX 缺陷（M1 修）
+## M0 暴露的两个 UX 缺陷（已在 v0.0.2 修复）
 
 1. **Esc 被视频控件吞掉**：`window.addEventListener('keydown', ...)` 是冒泡阶段，
    原生 media 控件在焦点内会先处理 Escape。改为捕获阶段注册（`addEventListener(..., true)`），

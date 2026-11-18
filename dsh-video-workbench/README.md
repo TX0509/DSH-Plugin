@@ -52,6 +52,12 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 媒体根目录默认 `$DSH_HOME/cache/dsh-video-workbench/media`，可用配置项 `mediaRoot` 覆盖。
 
+M1 起还会引入两个目录（详见 [docs/M1-PLAN.md](docs/M1-PLAN.md)）：
+
+- `projectsRoot`（**必填**）：项目源码、素材与成片；推荐放在 D 盘专用 DSH 工作区的 `video-projects/`。
+  未配置时只保留 M0 的媒体演示，项目功能禁用——**不会默认落到 C 盘**。
+- `exportDir`（可选）：渲染完成后把成片另存一份，便于集中查找；媒体路由不暴露该目录。
+
 响应带 `Cache-Control: private, max-age=3600` 与 `ETag`。覆盖同名文件后，浏览器可能沿用旧片段，
 因此渲染产物建议按版本命名（`v1.mp4`、`v2.mp4`），而不是反复覆盖同一个文件名。
 
@@ -79,4 +85,4 @@ node --test
 
 ## 未完成
 
-M1–M6 见 [PLAN.md](PLAN.md)。
+M1–M6 见 [PLAN.md](PLAN.md)；M1 的目录、构建、schema 与验收步骤见 [docs/M1-PLAN.md](docs/M1-PLAN.md)。

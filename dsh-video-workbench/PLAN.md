@@ -4,6 +4,7 @@
 > 平台范围：**Windows + DSH Desktop 优先**；Web 与 macOS 未验证，README 必须写明。
 > 当前 DSH：`0.2.2-rc.3`；渲染器：HyperFrames `0.6.33`（固定，不跟随 DSH 升级）。
 > M0 状态：**已完成**——渲染 10s@1080p = 15.2s、路由 206、`dsh-app://app` 下播放与拖动通过、取消无残留。结论见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
+> M1 执行细节（目录、构建、schema、步骤、DoD）见 [docs/M1-PLAN.md](docs/M1-PLAN.md)。
 
 ## 0. 决策记录
 
@@ -11,7 +12,9 @@
 | --- | --- | --- |
 | 生图 | 火山方舟 Seedream，`/images/generations` | model ID 走配置不写死（`250828` 即将下线，新版为 `20260415`），约 0.2 元/张 |
 | TTS | 火山引擎语音合成为主，本地 Kokoro `zf_xiaobei` 兜底 | 火山支持时间戳字幕；两套凭据体系需分别存 |
-| 项目根目录 | `projectsRoot` 固定绝对路径，默认 `<专用工作区>/video-projects/` | 不随会话 cwd 变化；所有路径经白名单校验 |
+| 项目根目录 | `projectsRoot` **必填**，放专用 DSH 工作区子目录（D 盘） | 不提供 C 盘默认值；未配置时项目功能禁用；路径经白名单校验 |
+| 导出目录 | `exportDir` 可选，渲染后另存一份成片 | 媒体路由不暴露；同名按版本递增，不覆盖已有导出 |
+| 项目 ID | slug 用创建时间戳 `YYYYMMDD-HHmmss`，目录创建后不可变 | 标题存 `project.json`，UI 与导出文件名使用标题 |
 | 构建 | TypeScript + esbuild，提交 `index.js` / `client.js` 产物 | `react` 外部化；`tsc --noEmit` 只做类型检查 |
 | 平台 | Windows + Desktop only | 不写 desktop 专属分支，保持两端可移植 |
 
@@ -49,7 +52,7 @@ $DSH_HOME/cache/dsh-video-workbench/
 | 里程碑 | 内容 | 人日 | 验收标准 |
 | --- | --- | --- | --- |
 | **M0 隔离与链路验证** | ① `api/...` 路由 + `<video>` 拖拽（206）；② 托管 Node 探测链 + 本地 hyperframes 安装/运行 + 缓存目录 + **子进程 env 清理**；③ 取消/退出无 Chrome 残留；④ overlay 窗口区域声明（读 `v0.2.2-rc.1/window-drag-regions`）；⑤ `docs/UPGRADE-PLAYBOOK.md` | 2 | 四条链路全绿；安装耗时可接受（≤15 分钟）；playbook 有可执行步骤 |
-| **M1 骨架与播放** | TS/esbuild 脚手架、包结构、`adapters/` 层、`projectsRoot` + `project.json`、媒体路由（Range + 路径校验）、overlay + 播放器、composer 入口、`video_selfcheck` 骨架、构建可复现校验 | 3 | 手工 mp4 能播能拖、亮暗正常、Esc 焦点归位；`build` 后产物与提交一致 |
+| **M1 骨架与播放** | TS/esbuild 脚手架、包结构、`adapters/` 层、`projectsRoot` + `project.json`、媒体路由（Range + 路径校验）、overlay + 播放器、composer 入口、`video_selfcheck` 骨架、构建可复现校验——**执行细节见 [docs/M1-PLAN.md](docs/M1-PLAN.md)** | 3 | 手工 mp4 能播能拖、亮暗正常、Esc 焦点归位；`build` 后产物与提交一致 |
 | **M2 渲染管线** | 运行时供给与**首次下载 UX**、渲染任务/进度/取消/超时、进程树清理、原子写入、保留策略（最近 5 个 render） | 5 | UI 内跑完 10s 片；取消无残留进程与半成品；磁盘不无限增长 |
 | **M3 素材与配音** | Pixabay、Seedream 生图、火山 TTS（含 word timings）+ Kokoro 兜底、失败降级（无声也可出片）、素材缓存与署名、scenes → composition 脚手架 | 5 | 3 图 + 1 配音进片并渲染成功；无 key 时 Kokoro 出片；TTS 全失败时出无声片 |
 | **M4 Agent 主路径** | 9 个工具、结果卡、合成模板、`hyperframes lint` 门禁与失败修复回路、错误分类回传 | 6 | 固定 prompt 回归集 ≥2/3 出片；lint 不过不进入渲染 |

@@ -85,4 +85,5 @@ node --test
 
 ## 未完成
 
-M1–M6 见 [PLAN.md](PLAN.md)；M1 的目录、构建、schema 与验收步骤见 [docs/M1-PLAN.md](docs/M1-PLAN.md)。
+M1–M6 见 [PLAN.md](PLAN.md)；M1 的目录、构建、schema 与验收步骤见 [docs/M1-PLAN.md](docs/M1-PLAN.md)；
+下一个人/下一个会话请先读 [docs/HANDOFF.md](docs/HANDOFF.md)。

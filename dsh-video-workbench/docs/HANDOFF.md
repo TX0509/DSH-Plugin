@@ -151,7 +151,7 @@ cd dsh-video-workbench
 node scripts/verify.mjs
 ```
 
-全绿说明环境正常，直接从「步骤 2」开始；任何一步失败，先修 `verify` 再动业务代码。
+全绿说明环境正常，直接从「步骤 3」开始；任何一步失败，先修 `verify` 再动业务代码。
 
 ## 9. 已知未决/可选
 

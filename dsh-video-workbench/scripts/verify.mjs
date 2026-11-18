@@ -25,21 +25,29 @@ function run(label, command, args) {
 }
 
 /**
- * Keep DSH coupling inside the adapter layer. `shared/dsh.ts` is the
- * hand-written type declaration module, so it is allowed to name the services;
- * business modules must not.
+ * Keep DSH coupling inside the adapter layer.
+ *
+ * - `shared/dsh.ts` is the hand-written type declaration module, so it names
+ *   the services but runs no calls.
+ * - `shared/routes.ts` is the wire contract, so it owns the page-global name.
+ * - Everything else outside `adapters/` must not touch either.
  */
 function checkDshBoundary() {
+  const callPattern = /webServer|__ModuleLoader__|slots\./u
+  const wirePattern = /__DSH_VIDEO_WORKBENCH__/u
   const offenders = []
   for (const relative of readdirSync(path.join(ROOT, 'src'), { recursive: true })) {
     const name = String(relative).replaceAll('\\', '/')
     if (!name.endsWith('.ts') && !name.endsWith('.tsx')) continue
-    if (name.includes('adapters/') || name === 'shared/dsh.ts') continue
+    const adapter = name.includes('adapters/')
     const source = readFileSync(path.join(ROOT, 'src', name), 'utf8')
-    if (/webServer|__ModuleLoader__|slots\.|__DSH_VIDEO_WORKBENCH__/u.test(source)) offenders.push(name)
+    if (!adapter && name !== 'shared/dsh.ts' && callPattern.test(source)) offenders.push(name)
+    if (!adapter && name !== 'shared/dsh.ts' && name !== 'shared/routes.ts' && wirePattern.test(source)) {
+      offenders.push(name)
+    }
   }
   if (offenders.length > 0) {
-    console.error(`\n[verify] dsh boundary failed: ${offenders.join(', ')}`)
+    console.error(`\n[verify] dsh boundary failed: ${[...new Set(offenders)].join(', ')}`)
     process.exit(1)
   }
   console.log('[verify] dsh boundary ok')

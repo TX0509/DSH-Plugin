@@ -54,7 +54,8 @@ dsh-video-workbench/
 
 **DSH 边界规则**：`src/host/` 与 `src/client/` 的业务文件不得直接出现
 `webServer`、`slots.`、`__ModuleLoader__`、`__DSH_VIDEO_WORKBENCH__`；
-只有 `*/adapters/*` 与类型声明文件 `shared/dsh.ts` 可以出现。`verify` 会自动检查。
+只有 `*/adapters/*` 可以出现，类型声明文件 `shared/dsh.ts`（只命名类型、不发调用）
+与线路常量文件 `shared/routes.ts`（持有 token 全局名）例外。`verify` 会自动检查。
 
 M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播放/拖动、取消渲染无残留。
 详见 `docs/M0-FINDINGS.md`。

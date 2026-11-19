@@ -1,7 +1,10 @@
 # M3 素材与配音 · 执行计划（v1）
 
 > 目标版本：`0.3.0`。前置：M2 已完成（渲染链路、运行时供给、面板 UI 可用）。
-> 状态：**待开工**。已拍板：① Kokoro 兜底接受"要求本机 Python"；② 火山凭据已可用；③ M3 不拆，单里程碑内按步骤顺序交付。
+> 状态：**待开工**。已拍板：① Kokoro 兜底接受"要求本机 Python"；② 火山凭据已可用；
+> ③ M3 不拆，单里程碑内按步骤顺序交付；④ 火山音色 id 暂不确定，先留占位（用服务端默认）；
+> ⑤ Pixabay 与 **Pexels** 的 key 均已具备；⑥ 允许在 **profile 的 `cordis.patch.yml`** 明文写 key，
+> 但**绝不入库**（本文件 §17）。
 
 ## 1. 目标与非目标
 
@@ -36,6 +39,9 @@ TTS 全部失败时输出无声片且不阻断渲染。
 | 火山凭据 | 已可用；**主路径** | 用户已确认；时间戳字幕 + 中文质量 |
 | M3 拆分 | **不拆**，一个里程碑内按步骤 0→7 顺序做，但**先做不依赖云凭据的部分**（步骤 3/4 的本地路径） | 用户决定；仍保证"无凭据可验收" |
 | 素材元数据 | 不改 `project.json` schema；元数据写 `assets/attribution.json` | 避免 schema 升级链；PLAN §2 已预留该文件名 |
+| 素材源 | **Seedream + Pixabay + Pexels** 三源；`auto` 顺序：Seedream → Pexels → Pixabay | Pexels/Pixabay key 均已具备；两库互为备份，避免单一限流卡死 |
+| 火山音色 id | **暂留占位**：`volcTtsVoice` 为空时用服务端默认音色，步骤 0 再补真实 id | 用户尚未确定；不能让"音色未定"阻塞链路 |
+| 密钥存放 | 只允许写在 **profile 的 `cordis.patch.yml`**（仓库外）；插件仓库内的 `cordis.patch.yml` 只是 loader 插入行，**永不写 key** | 明文可接受但绝不入库；日志/错误/`attribution.json`/`project.json` 全部脱敏 |
 | 字幕数据 | 存 `captions/<sceneId>.json`，**不烧录** | 供 M4/M5 使用；`captions.enabled=false` 时不请求/不落盘 |
 | 时长对齐 | 默认 `autoAlignSceneDuration: true`：按配音时长回写 `scene.durationSec` | 避免"配音被截断"；写入仍走原子写 + schema 校验 |
 
@@ -113,7 +119,8 @@ src/host/media/
 │   ├── volc-tts.ts   # 火山语音合成（时间戳 → words）
 │   ├── kokoro.ts     # 调 hyperframes tts；探测 python；失败给可执行提示
 │   ├── seedream.ts   # 火山方舟生图（/images/generations）
-│   ├── pixabay.ts    # 图/视频检索与下载
+│   ├── pixabay.ts    # Pixabay 图/视频检索与下载
+│   ├── pexels.ts     # Pexels 图/视频检索与下载（第二图库源）
 │   └── fake.ts       # 测试用：确定性字节 + 固定 words
 ├── prepare.ts        # 编排：逐分镜 生图/找图 → 配音 → 对齐时长 → 写 attribution/captions
 └── jobs.ts           # 与 render/jobs 同款异步任务（202 + 轮询），并发 1
@@ -155,21 +162,23 @@ prepareProject({ projectsRoot, projectId, options }): Promise<PrepareResult>
 
 | 服务 | 用途 | 待落定项（步骤 0 输出到本文 §6 附录） |
 | --- | --- | --- |
-| 火山 TTS | 主配音 + 时间戳 | endpoint/版本、鉴权头（appId/token/cluster）、`voice_type`、字数上限、输出格式、时间戳字段、超时与价格 |
+| 火山 TTS | 主配音 + 时间戳 | endpoint/版本、鉴权头（appId/token/cluster）、`voice_type`（**占位：暂用服务端默认，步骤 0 回填**）、字数上限、输出格式、时间戳字段、超时与价格 |
 | 火山方舟 Seedream | 生图 | `/images/generations` 请求体、model id（`20260415`）、9:16 尺寸映射、返回 base64/URL、审核拒绝文案 |
-| Pixabay | 备用图/视频 | `/api/` 检索参数、`per_page` 上限、`image`/`video` 字段、下载地址、许可与署名要求、限流 |
+| Pixabay | 图/视频源（备份） | `/api/` 检索参数、`per_page` 上限、`image`/`video` 字段、下载地址、许可与署名要求、限流 |
+| Pexels | 图/视频源（首选备用） | `/videos/search` 与 `/v1/search` 参数、`orientation=portrait`、`src.original` 字段、署名（photographer）与链接、限流（默认 200/小时） |
 | Kokoro（本地） | 无凭据兜底 | `hyperframes tts -v zf_xiaobei -s <speed> -l zh --json` 的真实 JSON 结构；Python 探测顺序 |
 
-凭据读取顺序：`ctx.credentials.resolve/readRecord`（key 名见 §7）→ `Config` 明文兜底（仅本机自用，README 标注不建议）→ 视为未配置。
+凭据读取顺序：`ctx.credentials.resolve/readRecord`（key 名见 §7）→ `Config` 明文兜底
+（**仅限 profile patch，仓库外**）→ 视为未配置。
 
 ## 7. 配置项（`PluginConfig` 增量）
 
 | 配置项 | 默认 | 说明 |
 | --- | --- | --- |
-| `imageProvider` | `auto` | `auto` / `seedream` / `pixabay` / `none` |
+| `imageProvider` | `auto` | `auto`（Seedream → Pexels → Pixabay）/ `seedream` / `pexels` / `pixabay` / `none` |
 | `seedreamModel` | `20260415` | 模型 id 走配置，不写死 |
 | `ttsProvider` | `auto` | `auto`（先火山后 Kokoro）/ `volc` / `kokoro` / `none` |
-| `volcTtsVoice` | 空 | 火山音色 id；空则用服务端默认 |
+| `volcTtsVoice` | 空 | 火山音色 id；**空 = 服务端默认（占位，待步骤 0 回填）** |
 | `kokoroVoice` | `zf_xiaobei` | 中文音色 |
 | `pythonPath` | 空 | 显式指定 Python；空则按 `python → python3 → py -3` 探测 |
 | `autoAlignSceneDuration` | `true` | 按配音时长回写 `scene.durationSec` |
@@ -178,7 +187,7 @@ prepareProject({ projectsRoot, projectId, options }): Promise<PrepareResult>
 | `prepareTimeoutMs` | `180000` | 准备素材总超时 |
 
 凭据 key（需步骤 0 验证点号是否被 `CredentialKey` 接受）：
-`volc.tts.appId`、`volc.tts.token`、`volc.ark.apiKey`、`pixabay.key`。
+`volc.tts.appId`、`volc.tts.token`、`volc.ark.apiKey`、`pixabay.key`、`pexels.key`。
 
 ## 8. 合成模板升级（`render/scaffold.ts` → `render/template.ts`）
 
@@ -196,8 +205,8 @@ prepareProject({ projectsRoot, projectId, options }): Promise<PrepareResult>
 | 无任何云凭据 | 图：`none`（纯文字卡）；配音：Kokoro | 有声片 |
 | Kokoro 也不可用（无 Python/pip） | 图：文字卡；配音：跳过并提示 `toolchain-missing` | **无声片**，不阻断渲染 |
 | 火山 TTS 失败（鉴权/限流/超时） | 该段回退 Kokoro；仍失败则跳过该段 | 部分有声/无声片 |
-| Seedream 失败 | 回退 Pixabay（若配置）→ 文字卡 | 出片 |
-| Pixabay 失败 | 文字卡 | 出片 |
+| Seedream 失败 | 回退 Pexels → Pixabay（若配置）→ 文字卡 | 出片 |
+| Pexels / Pixabay 失败 | 另一个图库 → 文字卡 | 出片 |
 | 内容审核拒绝 | 该段文字卡 + 错误记录 | 出片 |
 | 素材缓存命中 | 不发请求，直接复制 | 出片 |
 
@@ -232,8 +241,10 @@ prepareProject({ projectsRoot, projectId, options }): Promise<PrepareResult>
 - [ ] 火山 TTS：真实请求 → `assets/voice/s1.wav` + `captions/s1.json`（words 非空）
 - [ ] Kokoro：本机 Python（`py`）→ 生成 wav；缺 Python 时错误码 `toolchain-missing` 且可读提示
 - [ ] Seedream：3 张图落盘，`attribution.json` 记录 model/prompt/许可
+- [ ] Pexels：有 key 时按 `orientation=portrait` 检索并下载，条目带 photographer 署名与链接
 - [ ] Pixabay：有 key 时可检索并下载，条目带 author/url
 - [ ] 缓存：相同 prompt 二次准备不发请求（日志/fake 计数可证）
+- [ ] 密钥：仓库（含 `git log`）中不含任何真实 key；日志/错误/`attribution.json` 不出现 key 明文（单测断言）
 - [ ] 时长对齐：配音 3.4s → `scene.durationSec` 更新且 `project.json` 仍合法；关闭开关后不改
 - [ ] 模板：3 图 + 3 段音频 → 渲染产物含 **aac 流**，总时长 = 各分镜之和
 - [ ] 降级：无凭据 → Kokoro 出片；TTS 全失败 → 无声片仍 `succeeded`
@@ -244,11 +255,11 @@ prepareProject({ projectsRoot, projectId, options }): Promise<PrepareResult>
 
 | # | 提交 | 内容 | 完成标准 |
 | --- | --- | --- | --- |
-| 0 | `chore: M3 预检（凭据/服务契约/音频与 Python）` | 用真实凭据打火山 TTS、Seedream、Pixabay 各一次；Kokoro 走 `py`；把结果写进 §6 附录；确认 `credentials` key 命名 | 三个服务各有一条真实成功记录；Kokoro wav 可播 |
+| 0 | `chore: M3 预检（凭据/服务契约/音频与 Python）` | 用真实凭据打火山 TTS、Seedream、Pexels、Pixabay 各一次；Kokoro 走 `py`；把结果写进 §6 附录；确认 `credentials` key 命名与火山音色 id | 四个服务各有一条真实成功记录；Kokoro wav 可播 |
 | 1 | `feat: 增加素材 provider 接口与假实现` | `media/types.ts`、`fake.ts`、错误码、provider 解析（auto/none） | 单测覆盖所有错误码；无网络 |
 | 2 | `feat: 增加 attribution 与素材缓存` | `attribution.ts`、`cache.ts`（sha256、容量清理） | 单测 + 幂等用例 |
 | 3 | `feat: 接入火山 TTS 与 Kokoro 兜底` | `volc-tts.ts`、`kokoro.ts`、captions 落盘、时长对齐 | 真实 TTS 出 wav + words；`py` 兜底可用 |
-| 4 | `feat: 接入 Seedream 与 Pixabay 素材` | `seedream.ts`、`pixabay.ts`、`maxImagesPerProject` 护栏 | 3 图落盘 + attribution 正确 |
+| 4 | `feat: 接入 Seedream、Pexels 与 Pixabay 素材` | `seedream.ts`、`pexels.ts`、`pixabay.ts`、`maxImagesPerProject` 护栏 | 3 图落盘 + attribution 正确 |
 | 5 | `feat: 合成模板支持图片与音频轨` | `render/template.ts`（替换 scaffold 实现，保留旧行为兜底） | 渲染产物含 aac；缺素材仍可渲染 |
 | 6 | `feat: 素材准备服务、路由与面板入口` | `prepare.ts`、`media/jobs.ts`、两条路由、UI 按钮与进度 | UI 一次准备 + 失败明细可见 |
 | 7 | `docs: M3 验收记录` | README/INSTALL/COMPAT/HANDOFF/截图 + `prepare-smoke.mjs` | 文档与实测一致 |
@@ -260,11 +271,13 @@ prepareProject({ projectsRoot, projectId, options }): Promise<PrepareResult>
 | 风险 | 影响 | 对策 |
 | --- | --- | --- |
 | 火山 TTS 时间戳字段与预期不符 | 字幕数据不可用 | 步骤 0 先落定；不可用则 `captions` 降级为"无 words"，不阻断出片 |
-| Seedream 模型 id/尺寸契约变化 | 生图失败 | model 走配置；失败回落 Pixabay/文字卡 |
+| 火山音色 id 未定 | 声音不可控 | 先空着用服务端默认；`volcTtsVoice` 配置项 + 步骤 0 回填 |
+| Seedream 模型 id/尺寸契约变化 | 生图失败 | model 走配置；失败回落 Pexels → Pixabay → 文字卡 |
 | Python 环境差异（`py` vs `python`） | Kokoro 不可用 | 探测链 + `pythonPath`；只提示不安装 |
 | 音频与视频时长不同步 | 音画错位 | 以 `scene.durationSec` 为唯一时间轴；配音回写时长 |
 | 成本失控 | 意外扣费 | `maxImagesPerProject` + 缓存 + 日志记录每次调用 |
 | 外部内容合规 | 审核拒绝 | 逐段降级、记录 `content-rejected`、不重试 |
+| **key 泄露** | 凭据失效/被盗刷 | key 只写 profile patch（仓库外）；日志/错误/attribution 全脱敏；提交前用 `git grep -nE 'key|token'` 自查（§17） |
 
 停止条件：步骤 0 若火山 TTS 无法产出可用时间戳，则把 `captions` 从 M3 DoD 移除并记入 M4；
 若 Kokoro 在本机始终不可用，则保留"要求 Python"的提示路径，不另找替代 TTS。
@@ -276,17 +289,30 @@ prepareProject({ projectsRoot, projectId, options }): Promise<PrepareResult>
 | 0 预检 | 0.5 |
 | 1–2 provider + attribution + cache | 1.0 |
 | 3 TTS + Kokoro + captions + 对齐 | 1.5 |
-| 4 Seedream + Pixabay | 1.0 |
+| 4 Seedream + Pexels + Pixabay | 1.25 |
 | 5 模板图片/音频 | 0.75 |
 | 6 服务 + 路由 + UI | 1.0 |
 | 7 验收与文档 | 0.75 |
-| 合计 | **6.5**（PLAN 原估 5，偏紧；缓冲后按 7 排） |
+| 合计 | **6.75**（PLAN 原估 5，偏紧；缓冲后按 7 排） |
 
-## 16. 待确认（开工前 3 项，已有结论的打勾）
+## 16. 待确认（已拍板 6 项；剩 2 项不阻塞开工）
 
 - [x] Kokoro 兜底接受"要求本机 Python"
 - [x] 火山凭据已可用
 - [x] M3 不拆
-- [ ] 火山 TTS 的具体音色 id 与集群（步骤 0 用真实凭据确定后回填 §7）
-- [ ] Pixabay key 是否已有（没有就把 `imageProvider` 默认 `seedream`，Pixabay 留 M3 之后）
-- [ ] 是否允许在 `cordis.patch.yml` 明文写 key（本机自用可接受；README 标注不建议）
+- [x] Pixabay key 与 Pexels key 均已具备（新增 Pexels 为第二图库源）
+- [x] 允许在 **profile 的 `cordis.patch.yml`** 明文写 key（仓库外；绝不入库）
+- [x] 火山音色 id 暂空（用服务端默认，步骤 0 回填）
+- [ ] 火山的音色/集群具体值（步骤 0 用真实凭据确定后回填 §7，不阻塞）
+- [ ] Pexels 只用于图还是也用于视频（默认图；视频留 M3 后）
+
+## 17. 密钥与隐私（硬规则）
+
+1. **key 只出现在 profile 的 `cordis.patch.yml`**（`C:\Users\TX\.dsh\profiles\desktop\cordis.patch.yml`，在插件仓库之外）。
+   插件包内的 `cordis.patch.yml` 是 loader 插入行，**永不写 key**。
+2. 优先走 `ctx.credentials`；`Config` 明文只是本机自用的兜底，README / INSTALL 必须标注"不建议、勿提交"。
+3. **禁止**把 key 写进：`project.json`、`attribution.json`、`captions/*.json`、日志、错误消息、`selfcheck.json`、测试 fixture、提交信息。
+4. 错误与日志里的 key 一律脱敏（只留末 4 位或 `***`）；HTTP 请求头不进日志。
+5. 提交前自查：`git grep -nE '(apiKey|api_key|token|secret|key)\s*[:=]' -- . ':!test'`，
+   以及 `git log -p -S'volc.' -- docs README.md`；发现真实 key 走 `git filter-repo`（M6 再演练）。
+6. 外部请求说明写进 README：请求目标、频率、用途、离线行为（无网时全部走 Kokoro/文字卡）。

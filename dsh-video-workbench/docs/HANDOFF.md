@@ -158,7 +158,8 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 | 自检报告 | `dataDir/selfcheck.json`，`dataDir` 默认 `$DSH_HOME/cache/dsh-video-workbench` |
 | `engines.dsh` | `>=0.2.2-rc.5`（自用、不对外分发 → **不设上限**；升级不再被门禁停用，破坏性变更靠启动自检发现，详见 §4 第 14 条与 [COMPAT](COMPAT.md)） |
 | 运行时缓存 | 留默认位置（约 1.8 GB 在 C 盘），M2 不迁移 |
-| 生图 / TTS | 火山方舟 Seedream / 火山 TTS + 本地 Kokoro 兜底（M3 实现） |
+| 生图 / TTS | 火山方舟 Seedream / 火山 TTS + 本地 Kokoro 兜底（M3 实现；Kokoro 要求本机 Python） |
+| 图库 | Pixabay + **Pexels**（key 均已有；`auto` 顺序 Seedream → Pexels → Pixabay）；key 只写 profile patch，绝不入库 |
 
 工作区目录已建好（`video-projects/`、`video-exports/`；`spike-m0/` 是 M0 渲染测试遗留）。
 Desktop profile 的配置（`cordis.patch.yml` 里的 `projectsRoot` / `exportDir`）在应用运行期间

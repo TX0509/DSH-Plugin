@@ -23,8 +23,12 @@ try {
 }
 
 console.log(`报告：${file}`)
-console.log(`时间：${report.ranAt ?? '?'}    结果：${report.ok === true ? 'ok' : 'FAILED'}`)
-for (const check of Array.isArray(report.checks) ? report.checks : []) {
-  console.log(`${check.ok === true ? '✔' : '✖'} ${check.name} - ${check.detail}`)
+const checks = Array.isArray(report.checks) ? report.checks : []
+const skipped = checks.filter((check) => check.skipped === true).length
+console.log(`时间：${report.ranAt ?? '?'}    结果：${report.ok === true ? 'ok' : 'FAILED'}`
+  + `${skipped === 0 ? '' : `    （${skipped} 项跳过）`}`)
+for (const check of checks) {
+  const mark = check.skipped === true ? '–' : check.ok === true ? '✔' : '✖'
+  console.log(`${mark} ${check.name} - ${check.detail}`)
 }
 process.exit(report.ok === true ? 0 : 1)

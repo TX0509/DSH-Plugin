@@ -101,6 +101,7 @@ test('media route serves a full body with length and etag', async () => {
     assert.equal(response.headers['content-length'], '200')
     assert.equal(response.headers['accept-ranges'], 'bytes')
     assert.equal(response.headers['content-type'], 'video/mp4')
+    assert.equal(response.headers['x-content-type-options'], 'nosniff')
     assert.equal(response.body.length, 200)
   })
 })
@@ -120,6 +121,27 @@ test('media route answers 416 for an unsatisfiable range', async () => {
     const response = await call(origin, mediaPath('clip.mp4'), { headers: { Range: 'bytes=9999-' } })
     assert.equal(response.status, 416)
     assert.equal(response.headers['content-range'], 'bytes */200')
+  })
+})
+
+test('media route ignores ranges it does not handle instead of answering 416', async () => {
+  await withServer(async ({ origin }) => {
+    // Multi-range and unknown units are legal requests this server does not
+    // implement: RFC 9110 lets it ignore the header and send the whole file.
+    for (const range of ['bytes=0-1,3-4', 'items=0-1', 'bytes= 0-9']) {
+      const response = await call(origin, mediaPath('clip.mp4'), { headers: { Range: range } })
+      assert.equal(response.status, 200, `expected 200 for ${range}`)
+      assert.equal(response.headers['content-range'], undefined)
+      assert.equal(response.body.length, 200)
+    }
+  })
+})
+
+test('media route accepts an upper-case range unit', async () => {
+  await withServer(async ({ origin }) => {
+    const response = await call(origin, mediaPath('clip.mp4'), { headers: { Range: 'BYTES=10-19' } })
+    assert.equal(response.status, 206)
+    assert.equal(response.headers['content-range'], 'bytes 10-19/200')
   })
 })
 

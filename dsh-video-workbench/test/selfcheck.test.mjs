@@ -195,17 +195,92 @@ test('runSelfcheck: a 404 media probe is reported with the expected status', asy
   }
 })
 
-test('runSelfcheck: unconfigured projectsRoot fails both project checks', async () => {
+test('runSelfcheck: unconfigured projectsRoot is skipped, not failed', async () => {
   const roots = makeRoots()
   try {
     const { fetchImpl } = fetchStub(happyHandler())
     const result = await runSelfcheck(options(roots, fetchImpl, { projects: { state: 'unset' } }))
     assertShape(result)
     const byName = Object.fromEntries(result.checks.map((check) => [check.name, check]))
+    assert.equal(byName.projectsRootWritable.ok, true)
+    assert.equal(byName.projectsRootWritable.skipped, true)
+    assert.match(byName.projectsRootWritable.detail, /未配置/u)
+    assert.equal(byName.projectsRoute.ok, true)
+    assert.equal(byName.projectsRoute.skipped, true)
+    // An unset optional feature must not make the whole report fail.
+    assert.equal(result.ok, true)
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot)
+  }
+})
+
+test('runSelfcheck: an invalid projectsRoot is a real failure', async () => {
+  const roots = makeRoots()
+  try {
+    const { fetchImpl } = fetchStub(happyHandler())
+    const result = await runSelfcheck(options(roots, fetchImpl, {
+      projects: { state: 'invalid', detail: 'projectsRoot 不可用（EACCES）' },
+    }))
+    assertShape(result)
+    const byName = Object.fromEntries(result.checks.map((check) => [check.name, check]))
     assert.equal(byName.projectsRootWritable.ok, false)
-    assert.match(byName.projectsRootWritable.detail, /unset/u)
-    assert.equal(byName.projectsRoute.ok, false)
+    assert.equal(byName.projectsRootWritable.skipped, undefined)
     assert.equal(result.ok, false)
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot)
+  }
+})
+
+test('runSelfcheck: mediaProbePath overrides the probed file', async () => {
+  const roots = makeRoots()
+  try {
+    const { fetchImpl, calls } = fetchStub(happyHandler())
+    const result = await runSelfcheck(options(roots, fetchImpl, { mediaProbePath: 'custom/clip.mp4' }))
+    assertShape(result)
+    assert.equal(result.checks.find((check) => check.name === 'mediaProbe').ok, true)
+    const mediaCall = calls.find((entry) => entry.url.pathname === MEDIA_PATH)
+    assert.equal(mediaCall.url.searchParams.get('path'), 'custom/clip.mp4')
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot)
+  }
+})
+
+test('runSelfcheck: an already-aborted signal cancels every check', async () => {
+  const roots = makeRoots()
+  try {
+    const { fetchImpl, calls } = fetchStub(happyHandler())
+    const controller = new AbortController()
+    controller.abort()
+    const result = await runSelfcheck(options(roots, fetchImpl, { signal: controller.signal }))
+    assertShape(result)
+    assert.equal(result.ok, false)
+    assert.equal(calls.length, 0)
+    for (const check of result.checks) {
+      assert.equal(check.ok, false)
+      assert.match(check.detail, /取消/u)
+    }
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot)
+  }
+})
+
+test('runSelfcheck: aborting mid-run stops the remaining requests', async () => {
+  const roots = makeRoots()
+  try {
+    const controller = new AbortController()
+    // Abort while the media probe is in flight.
+    const handler = (url, init) => {
+      if (url.pathname === MEDIA_PATH) {
+        controller.abort()
+        throw new Error('aborted')
+      }
+      return happyHandler()(url, init)
+    }
+    const { fetchImpl, calls } = fetchStub(handler)
+    const result = await runSelfcheck(options(roots, fetchImpl, { signal: controller.signal }))
+    assertShape(result)
+    assert.equal(result.ok, false)
+    assert.equal(calls.some((entry) => entry.url.pathname === PROJECTS_PATH), false)
   } finally {
     removeRoots(roots.mediaRoot, roots.projectsRoot)
   }
@@ -303,7 +378,48 @@ test('apply: the startup selfcheck leaves a report on disk', async () => {
   }
 })
 
-/** Minimal Cordis context: records what apply() registers. */
+test('apply: unloading before the delay cancels the startup selfcheck', async () => {
+  const roots = makeRoots()
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-report-'))
+  const disposers = []
+  const ctx = {
+    logger: { info: () => {}, error: () => {} },
+    effect: (callback) => {
+      const dispose = callback()
+      disposers.push(dispose)
+      return dispose
+    },
+    inject(_dependencies, callback) {
+      callback({
+        on: () => () => {},
+        effect: (effect) => {
+          effect()
+          return () => {}
+        },
+        webServer: { register: () => () => {}, getOrigin: () => undefined },
+      })
+    },
+  }
+  apply(ctx, {
+    mediaRoot: roots.mediaRoot,
+    projectsRoot: roots.projectsRoot,
+    dataDir,
+    selfcheckDelayMs: 50,
+  })
+  try {
+    assert.ok(disposers.length > 0, 'expected the selfcheck to be scheduled through ctx.effect')
+    for (const dispose of disposers) dispose()
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    assert.equal(readSelfcheckReport(dataDir), undefined, 'an unloaded plugin must not write a report')
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot, dataDir)
+  }
+})
+
+/**
+ * Minimal Cordis context: records what apply() registers, and keeps the host
+ * effect disposers so a test can unload the plugin.
+ */
 function stubContext() {
   const routes = []
   const listeners = []

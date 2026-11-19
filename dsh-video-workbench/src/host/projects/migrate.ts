@@ -21,7 +21,8 @@ export function migrateProject(raw: unknown): MigrateResult {
   const version = raw.schemaVersion
   if (version === undefined) {
     // Pre-versioning file or an agent that omitted the field: assume v1.
-    return { ok: true, value: { ...raw, schemaVersion: SCHEMA_VERSION }, from: SCHEMA_VERSION }
+    // `from: 0` records "no version was written" instead of claiming v1.
+    return { ok: true, value: { ...raw, schemaVersion: SCHEMA_VERSION }, from: 0 }
   }
   if (version === SCHEMA_VERSION) return { ok: true, value: raw, from: SCHEMA_VERSION }
   if (typeof version !== 'number' || !Number.isInteger(version)) {

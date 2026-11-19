@@ -206,6 +206,6 @@ M0 的四条链路全部打通：渲染、路由、Range 播放、取消清理�
 | `If-None-Match` 未先于 `Range` 评估 | 带缓存校验的 Range 请求返回 206 而非 304，缓存语义不一致 | 先判 `If-None-Match`（RFC 7232 §6） | 304-over-Range / 304-over-416 用例 |
 | Windows 设备名（`con` / `aux` / `com1`…）可被放行 | 在 Windows 上无法创建或行为异常 | `paths.ts` 新增 `isReservedName`，媒体与项目资产校验共用 | 设备名用例（含 `com10` / `console` 反例） |
 
-测试从 65 项增至 86 项（含安装脚本与项目失败路径用例）；`verify` 新增"产物形态"检查（构建标记、
+测试从 65 项增至 99 项（含安装脚本与项目失败路径用例）；`verify` 新增"产物形态"检查（构建标记、
 classic JSX、单次注册、`id` 与包名一致、Host 产物可按 ESM 导入并导出 `apply`），
 且"产物一致"改为对 `HEAD` 校验，只暂存不算提交。

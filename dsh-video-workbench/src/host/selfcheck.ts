@@ -22,6 +22,8 @@ export type SelfcheckName =
 export interface SelfcheckCheck {
   name: SelfcheckName
   ok: boolean
+  /** True for a check that did not apply (feature not configured). */
+  skipped?: boolean
   detail: string
 }
 
@@ -37,6 +39,10 @@ export interface SelfcheckOptions {
   requireToken: boolean
   mediaRoot: string
   projects: ProjectsConfig
+  /** Project-relative media file the probe reads; defaults to `test.mp4`. */
+  mediaProbePath?: string
+  /** Aborted when the plugin unloads: in-flight probes stop instead of running on. */
+  signal?: AbortSignal
   /** Injectable for tests; defaults to the global fetch. */
   fetchImpl?: typeof fetch
   timeoutMs?: number
@@ -56,6 +62,16 @@ function pass(name: SelfcheckName, detail: string): SelfcheckCheck {
   return { name, ok: true, detail }
 }
 
+/** A check that does not apply to this configuration; not a failure. */
+function skip(name: SelfcheckName, detail: string): SelfcheckCheck {
+  return { name, ok: true, skipped: true, detail }
+}
+
+/** The plugin unloaded while this check was waiting; not a failure either. */
+function cancelled(name: SelfcheckName): SelfcheckCheck {
+  return { name, ok: false, detail: '已取消（插件正在卸载）' }
+}
+
 function errorText(error: unknown): string {
   if (error instanceof ProbeError) return error.message
   return error instanceof Error ? error.message : String(error)
@@ -66,15 +82,20 @@ async function request(
   url: string,
   init: RequestInit,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const forward = (): void => controller.abort()
+  if (signal?.aborted === true) controller.abort()
+  else signal?.addEventListener('abort', forward, { once: true })
   try {
     return await fetchImpl(url, { ...init, signal: controller.signal })
   } catch (error) {
     throw new ProbeError(`请求失败：${errorText(error)}`)
   } finally {
     clearTimeout(timer)
+    signal?.removeEventListener('abort', forward)
   }
 }
 
@@ -108,12 +129,13 @@ async function checkRouteMounted(
   origin: string | undefined,
   observed: Observed,
 ): Promise<SelfcheckCheck> {
+  if (options.signal?.aborted === true) return cancelled('routeMounted')
   if (origin === undefined) {
     return fail('routeMounted', 'Host 尚未提供监听地址（origin），无法探测路由')
   }
   const url = `${origin}${PING_PATH}`
   try {
-    const anonymous = await request(fetchImpl, url, {}, timeoutMs)
+    const anonymous = await request(fetchImpl, url, {}, timeoutMs, options.signal)
     const anonymousStatus = anonymous.status
     if (options.requireToken) {
       if (anonymousStatus !== 401) {
@@ -136,6 +158,7 @@ async function checkRouteMounted(
       `${url}?t=${encodeURIComponent(options.token)}`,
       {},
       timeoutMs,
+      options.signal,
     )
     const authenticatedStatus = authenticated.status
     if (authenticatedStatus !== 200) {
@@ -157,6 +180,7 @@ async function checkRouteMounted(
 }
 
 function checkTokenRequired(options: SelfcheckOptions, observed: Observed): SelfcheckCheck {
+  if (options.signal?.aborted === true) return cancelled('tokenRequired')
   if (observed.pingRequireToken === undefined) {
     return fail('tokenRequired', 'ping 未返回 requireToken，无法确认鉴权配置（路由探测可能失败）')
   }
@@ -175,20 +199,29 @@ async function checkMediaProbe(
   timeoutMs: number,
   origin: string | undefined,
 ): Promise<SelfcheckCheck> {
+  if (options.signal?.aborted === true) return cancelled('mediaProbe')
   if (origin === undefined) {
     return fail('mediaProbe', '缺少 Host origin，无法探测媒体路由')
   }
-  const url = `${origin}${MEDIA_PATH}?path=${encodeURIComponent(PROBE_MEDIA)}`
+  const probeMedia = options.mediaProbePath ?? PROBE_MEDIA
+  const url = `${origin}${MEDIA_PATH}?path=${encodeURIComponent(probeMedia)}`
     + `&t=${encodeURIComponent(options.token)}`
   try {
-    const response = await request(fetchImpl, url, { headers: { Range: 'bytes=0-99' } }, timeoutMs)
+    const response = await request(
+      fetchImpl,
+      url,
+      { headers: { Range: 'bytes=0-99' } },
+      timeoutMs,
+      options.signal,
+    )
     const status = response.status
     const contentRange = response.headers.get('content-range') ?? ''
     await discard(response)
     if (status !== 206) {
       return fail(
         'mediaProbe',
-        `Range 0-99 返回 ${status}，预期 206；请确认 ${PROBE_MEDIA} 存在于 mediaRoot`,
+        `Range 0-99 返回 ${status}，预期 206；请确认 ${probeMedia} 存在于 mediaRoot`
+          + '（可用 mediaProbePath 指定其它样本）',
       )
     }
     return pass('mediaProbe', `Range 0-99 → 206${contentRange === '' ? '' : ` ${contentRange}`}`)
@@ -199,10 +232,14 @@ async function checkMediaProbe(
 
 function checkProjectsRootWritable(options: SelfcheckOptions): SelfcheckCheck {
   const projects = options.projects
+  if (options.signal?.aborted === true) return cancelled('projectsRootWritable')
+  if (projects.state === 'unset') {
+    return skip('projectsRootWritable', '未配置 projectsRoot（项目功能关闭），跳过')
+  }
   if (projects.state !== 'ready' || projects.root === undefined) {
     return fail(
       'projectsRootWritable',
-      `projectsRoot ${projects.state}；请在插件配置里设置 projectsRoot 后重启 DSH`,
+      `projectsRoot ${projects.state}；请在插件配置里修正 projectsRoot 后重启 DSH`,
     )
   }
   const probe = path.join(projects.root, `.selfcheck-${randomBytes(6).toString('hex')}.tmp`)
@@ -230,12 +267,16 @@ async function checkProjectsRoute(
   origin: string | undefined,
 ): Promise<SelfcheckCheck> {
   const projects = options.projects
+  if (options.signal?.aborted === true) return cancelled('projectsRoute')
+  if (projects.state === 'unset') {
+    return skip('projectsRoute', '未配置 projectsRoot（项目功能关闭），跳过')
+  }
   if (projects.state !== 'ready' || projects.root === undefined) {
     return fail('projectsRoute', `projectsRoot ${projects.state}，项目路由未挂载`)
   }
   const listed = listProjects(projects.root)
   if (listed.projects.length === 0) {
-    return pass('projectsRoute', 'projectsRoot 下暂无项目，跳过读取探测')
+    return skip('projectsRoute', 'projectsRoot 下暂无项目，跳过读取探测')
   }
   if (origin === undefined) {
     return fail('projectsRoute', '缺少 Host origin，无法探测项目路由')
@@ -245,7 +286,7 @@ async function checkProjectsRoute(
   const url = `${origin}${PROJECTS_PATH}?path=${encodeURIComponent(file)}`
     + `&t=${encodeURIComponent(options.token)}`
   try {
-    const response = await request(fetchImpl, url, {}, timeoutMs)
+    const response = await request(fetchImpl, url, {}, timeoutMs, options.signal)
     const status = response.status
     if (status !== 200) {
       await discard(response)

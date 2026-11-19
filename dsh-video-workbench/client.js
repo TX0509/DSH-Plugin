@@ -43,6 +43,8 @@ var React = __toESM(require("react"), 1);
 
 // src/shared/routes.ts
 var TOKEN_GLOBAL = "__DSH_VIDEO_WORKBENCH__";
+var PING_PATH = "/api/video-workbench/ping";
+var MEDIA_PATH = "/api/video-workbench/media";
 
 // src/client/adapters/context.ts
 function readToken() {
@@ -87,7 +89,8 @@ function mount(ctx, name, id, component) {
 // src/client/index.tsx
 var h = React.createElement;
 var OPEN_EVENT = "dshvw:toggle";
-var mediaUrl = (name) => hostUrl("api/video-workbench/media", {
+var SAMPLE_MEDIA = "test.mp4";
+var mediaUrl = (name) => hostUrl(MEDIA_PATH, {
   path: name,
   t: readToken()
 });
@@ -197,14 +200,14 @@ function Panel() {
         return;
       }
       try {
-        const pingResponse = await fetch(hostUrl("api/video-workbench/ping", { t: token }));
+        const pingResponse = await fetch(hostUrl(PING_PATH, { t: token }));
         const ping = await pingResponse.json();
-        const probe = await fetch(mediaUrl("test.mp4"), { headers: { Range: "bytes=0-99" } });
+        const probe = await fetch(mediaUrl(SAMPLE_MEDIA), { headers: { Range: "bytes=0-99" } });
         if (cancelled) return;
         setDiag(JSON.stringify({
           origin: window.location.origin,
           baseURI: document.baseURI,
-          mediaUrl: maskToken(mediaUrl("test.mp4")),
+          mediaUrl: maskToken(mediaUrl(SAMPLE_MEDIA)),
           tokenPresent: true,
           ping,
           media: {
@@ -249,8 +252,8 @@ function Panel() {
   }, [
     h("header", { className: "dshvw-head", key: "head" }, [
       h("div", { key: "title" }, [
-        h("h2", { className: "dshvw-title", key: "h" }, "\u89C6\u9891\u5DE5\u4F5C\u53F0 \xB7 M0"),
-        h("p", { className: "dshvw-sub", key: "p" }, "\u9A8C\u8BC1 dsh-app \u4E0B\u7684\u8DEF\u7531\u3001\u9274\u6743\u4E0E Range \u64AD\u653E")
+        h("h2", { className: "dshvw-title", key: "h" }, "\u89C6\u9891\u5DE5\u4F5C\u53F0"),
+        h("p", { className: "dshvw-sub", key: "p" }, "\u81EA\u68C0\uFF1A\u8DEF\u7531\u6302\u8F7D\u3001\u8BBF\u95EE\u4EE4\u724C\u4E0E Range \u64AD\u653E")
       ]),
       h("button", {
         key: "close",
@@ -272,7 +275,7 @@ function Panel() {
     error === "" ? h("video", {
       key: `video-${attempt}`,
       className: "dshvw-video",
-      src: mediaUrl("test.mp4"),
+      src: mediaUrl(SAMPLE_MEDIA),
       controls: true,
       preload: "metadata",
       onLoadedMetadata: (event) => setDuration(event.currentTarget.duration || 0),

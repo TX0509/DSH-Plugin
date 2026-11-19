@@ -79,10 +79,12 @@ M0 不需要配置。M1 增加项目能力后，需要给 profile 的 `cordis.pa
 | `dataDir` | 否 | 插件数据目录，默认 `$DSH_HOME/cache/dsh-video-workbench`；自检报告写在这里 |
 | `selfcheckOnStartup` | 否 | 默认 `true`；启动 3 秒后自动跑 `video_selfcheck` 并写报告 |
 | `selfcheckDelayMs` | 否 | 默认 `3000`；启动自检延迟 |
+| `selfcheckMediaPath` | 否 | 默认 `test.mp4`；自检探测的媒体文件（相对 `mediaRoot`），换样本时用它 |
 | `requireToken` | 否 | 默认 `true`；不推荐关闭 |
 
-未配置 `projectsRoot` 时插件仍可加载，但项目功能禁用，`video_selfcheck` 的
-`projectsRootWritable` / `projectsRoute` 会失败并写进报告。
+未配置 `projectsRoot` 时插件仍可加载，但项目功能禁用：`video_selfcheck` 的
+`projectsRootWritable` / `projectsRoute` 会被标记为 `skipped`（不算失败），整份报告仍为 `ok`。
+配置了却不可用（盘符根、非目录、无权限）才算失败。
 
 ## 验证安装
 

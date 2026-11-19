@@ -2,11 +2,13 @@
 //
 // Writes are atomic (temp file + rename) so a crash never leaves a half-written
 // project.json behind, and reads always migrate before validating.
+// Every entry point reports failures as `{ ok: false, errors }`; none of them
+// throws at the caller.
 
-import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { writeFileAtomic } from '../atomic'
 import { isFilesystemRoot } from '../paths'
 
 import { migrateProject } from './migrate'
@@ -93,20 +95,9 @@ function projectDir(root: string, id: string): string {
   return path.join(root, id)
 }
 
-/** Temp file + rename: readers see either the old or the new content. */
+/** Serialize then write atomically: readers see the old or the new file. */
 function writeJsonAtomic(target: string, value: unknown): void {
-  const temp = path.join(path.dirname(target), `.${path.basename(target)}.tmp-${randomBytes(6).toString('hex')}`)
-  fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-  try {
-    fs.renameSync(temp, target)
-  } catch (error) {
-    try {
-      fs.rmSync(temp, { force: true })
-    } catch {
-      // The rename failure is the interesting one.
-    }
-    throw error
-  }
+  writeFileAtomic(target, `${JSON.stringify(value, null, 2)}\n`)
 }
 
 /** The directory skeleton every project has, whether it is created or updated. */
@@ -155,9 +146,19 @@ export function createProject(
   input: CreateProjectInput,
   options: CreateProjectOptions = {},
 ): StoreResult {
-  const resolvedRoot = ensureProjectRoot(root)
+  let resolvedRoot: string
+  try {
+    resolvedRoot = ensureProjectRoot(root)
+  } catch (error) {
+    return { ok: false, errors: [errorMessage(error)] }
+  }
   const now = options.now ?? new Date()
-  const id = allocateProjectDir(resolvedRoot, now)
+  let id: string
+  try {
+    id = allocateProjectDir(resolvedRoot, now)
+  } catch (error) {
+    return { ok: false, errors: [errorMessage(error)] }
+  }
   const candidate: unknown = {
     schemaVersion: 1,
     id,
@@ -173,8 +174,15 @@ export function createProject(
     return validated
   }
   const dir = projectDir(resolvedRoot, id)
-  createProjectLayout(dir)
-  persistProject(dir, validated.project, true)
+  try {
+    createProjectLayout(dir)
+    persistProject(dir, validated.project, true)
+  } catch (error) {
+    // `persistProject` already removed a directory it created; this also covers
+    // a layout failure that happened before the write.
+    fs.rmSync(dir, { recursive: true, force: true })
+    return { ok: false, errors: [errorMessage(error)] }
+  }
   return { ok: true, project: validated.project }
 }
 
@@ -230,6 +238,24 @@ export function writeProject(root: string, value: unknown): StoreResult {
   return validated
 }
 
+/**
+ * Newest first. Ids are `<timestamp>` or `<timestamp>-<n>` for same-second
+ * collisions, so the collision counter is compared numerically — plain string
+ * order would put `…-2` before `…-10`.
+ */
+function compareNewestFirst(left: string, right: string): number {
+  const split = (id: string): { base: string; attempt: number } => {
+    const match = /^(.*)-([1-9][0-9]*)$/u.exec(id)
+    return match === null
+      ? { base: id, attempt: 1 }
+      : { base: match[1], attempt: Number(match[2]) }
+  }
+  const a = split(left)
+  const b = split(right)
+  if (a.base !== b.base) return a.base < b.base ? 1 : -1
+  return b.attempt - a.attempt
+}
+
 /** Newest first; broken projects are reported instead of aborting the list. */
 export function listProjects(root: string): ListProjectsResult {
   const resolvedRoot = path.resolve(root)
@@ -250,6 +276,6 @@ export function listProjects(root: string): ListProjectsResult {
       invalid.push({ id: entry.name, errors: result.errors })
     }
   }
-  projects.sort((left, right) => (left.id < right.id ? 1 : left.id > right.id ? -1 : 0))
+  projects.sort((left, right) => compareNewestFirst(left.id, right.id))
   return { projects, invalid }
 }

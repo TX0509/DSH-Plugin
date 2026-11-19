@@ -1,8 +1,8 @@
 # M1 执行计划：骨架与播放
 
 > 状态：**步骤 1–5 已完成，M1 验收全部通过**（构建骨架、DSH 适配层、项目模型与项目路由、
-> `video_selfcheck`、文档与版本 0.1.0，当前版本 0.1.1）；`verify` 全绿，测试 86 项（2026-11-19
-> 修复客户端 bundle 重复注册等数据完整性问题后从 65 增至 86）。
+> `video_selfcheck`、文档与版本 0.1.0，当前版本 0.1.2）；`verify` 全绿，测试 99 项（2026-11-19
+> 修复客户端 bundle 重复注册等数据完整性问题后从 65 增至 99）。
 > 实机：DSH Desktop `0.2.2-rc.5` 完全重启后 Host 自检 5/5；客户端 ▶/token/206/播放拖动/
 > Esc/重试、亮暗/侧栏/窄窗口、单次模块注册全部通过（2026-11-19，见第 10 节）。
 > 本文替代 [PLAN.md](../PLAN.md) 里 M1 那一行，给出可以照着执行的步骤、目录、命令与验收标准。
@@ -319,11 +319,13 @@ M1 版本只做能在 Host 内完成、不需要渲染的检查：
 | --- | --- |
 | `routeMounted` | 未带 token 请求 `ping`，返回本插件 401 JSON |
 | `tokenRequired` | 配置为 `requireToken: true`（或显式 false） |
-| `mediaProbe` | 带 token 请求 `test.mp4` 的 0–99 字节，返回 206 |
-| `projectsRootWritable` | 在根下写入并删除一个临时文件 |
-| `projectsRoute` | `projects/<slug>/project.json` 可读（存在示例项目时） |
+| `mediaProbe` | 带 token 请求探测样本（默认 `test.mp4`，可用 `selfcheckMediaPath` 改）的 0–99 字节，返回 206 |
+| `projectsRootWritable` | 在根下写入并删除一个临时文件；`projectsRoot` 未配置时标记 `skipped` |
+| `projectsRoute` | `projects/<slug>/project.json` 可读；无项目或未配置时标记 `skipped` |
 
-输出 `{ ok, checks: [{ name, ok, detail }] }`。渲染、浏览器与 ffmpeg 检查留到 M2。
+输出 `{ ok, checks: [{ name, ok, skipped?, detail }] }`；`skipped` 的检查 `ok: true`，不影响
+整份报告。渲染、浏览器与 ffmpeg 检查留到 M2。自检可被取消：插件卸载或 `/selfcheck`
+调用方断开时，in-flight 探测会 `abort`（0.1.2 起）。
 
 ## 8. 测试计划
 
@@ -352,7 +354,7 @@ M1 版本只做能在 Host 内完成、不需要渲染的检查：
 
 自动化项已验证（`node scripts/verify.mjs`）：
 
-- [x] `pnpm verify` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、测试 86 项）
+- [x] `pnpm verify` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、测试 99 项）
 - [x] `node --check index.js client.js` 通过
 - [x] 产物已提交，且与源码一致（verify 校验）
 - [x] 仓库无 `node_modules` 提交

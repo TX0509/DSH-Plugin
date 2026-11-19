@@ -2,32 +2,40 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import test from 'node:test'
 
-import { parseRange, safeResolve } from '../index.js'
+import { contains, parseRange, safeResolve } from '../index.js'
 
 const ROOT = path.resolve('C:\\tmp\\video-root')
 
 test('parseRange: absent header means a full response', () => {
   assert.equal(parseRange(undefined, 1000), undefined)
-  assert.equal(parseRange('', 1000), 'invalid')
+  // An empty header is out of spec: ignore it rather than fail the request.
+  assert.equal(parseRange('', 1000), 'unrecognized')
 })
 
 test('parseRange: closed, open-ended, and suffix forms', () => {
   assert.deepEqual(parseRange('bytes=0-99', 1000), { start: 0, end: 99 })
   assert.deepEqual(parseRange('bytes=100-', 1000), { start: 100, end: 999 })
   assert.deepEqual(parseRange('bytes=-100', 1000), { start: 900, end: 999 })
+  // The range unit is case-insensitive (RFC 9110 §2).
+  assert.deepEqual(parseRange('BYTES=10-19', 1000), { start: 10, end: 19 })
 })
 
 test('parseRange: clamps an overlong end', () => {
   assert.deepEqual(parseRange('bytes=0-99999', 1000), { start: 0, end: 999 })
 })
 
-test('parseRange: rejects unsatisfiable and malformed ranges', () => {
-  assert.equal(parseRange('bytes=1000-', 1000), 'invalid')
-  assert.equal(parseRange('bytes=5-1', 1000), 'invalid')
-  assert.equal(parseRange('bytes=-0', 1000), 'invalid')
-  assert.equal(parseRange('bytes=-', 1000), 'invalid')
-  assert.equal(parseRange('items=0-1', 1000), 'invalid')
-  assert.equal(parseRange('bytes=abc-def', 1000), 'invalid')
+test('parseRange: unsatisfiable single ranges are reported separately from malformed ones', () => {
+  // Valid syntax, nothing to serve: the caller answers 416.
+  assert.equal(parseRange('bytes=1000-', 1000), 'unsatisfiable')
+  assert.equal(parseRange('bytes=5-1', 1000), 'unsatisfiable')
+  // Ranges this server does not handle: the caller ignores them and answers 200.
+  assert.equal(parseRange('bytes=-0', 1000), 'unrecognized')
+  assert.equal(parseRange('bytes=-', 1000), 'unrecognized')
+  assert.equal(parseRange('bytes=abc-def', 1000), 'unrecognized')
+  assert.equal(parseRange('bytes=0-1,3-4', 1000), 'unrecognized')
+  assert.equal(parseRange('bytes=0-1, 5-', 1000), 'unrecognized')
+  assert.equal(parseRange('items=0-1', 1000), 'unrecognized')
+  assert.equal(parseRange('bytes= 0-9', 1000), 'unrecognized')
 })
 
 test('safeResolve: accepts plain nested files', () => {
@@ -75,4 +83,12 @@ test('safeResolve: rejects Windows device names with or without an extension', (
   // Names that merely start with a device name are still legal.
   assert.equal(safeResolve(ROOT, 'console.mp4'), path.join(ROOT, 'console.mp4'))
   assert.equal(safeResolve(ROOT, 'com10.mp4'), path.join(ROOT, 'com10.mp4'))
+})
+
+test('contains: compares whole segments, not a ".." string prefix', () => {
+  assert.equal(contains(ROOT, ROOT), false)
+  assert.equal(contains(ROOT, path.join(ROOT, 'a.mp4')), true)
+  // A child literally named "..cache" is inside the root, not a parent hop.
+  assert.equal(contains(ROOT, path.join(ROOT, '..cache', 'x.mp4')), true)
+  assert.equal(contains(ROOT, path.join(ROOT, '..', 'x.mp4')), false)
 })

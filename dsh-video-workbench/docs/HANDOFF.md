@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，**M1 已完成并实机验收通过**（版本 `0.1.1`）；下一步 M2。
+> 最后更新：2026-11-19，**M1 已完成并实机验收通过**（版本 `0.1.2`，回归修复待重启复测）；下一步 M2。
 
 ## 1. 这是什么
 
@@ -13,7 +13,7 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 - 当前阶段：**M1 完成**（构建、适配层、项目模型与路由、`video_selfcheck`、双端实机验收；下一步 M2 渲染管线）
 - 已实机验证：DSH Desktop `0.2.2-rc.5` 完全重启后 Host 自检 **5/5** + 客户端半区**全部通过**（2026-11-19）
 - 待办：M2（见 §7）；Web / macOS 仍未验证
-- 版本：`0.1.1`（= 0.1.0 的代码 + 放宽 `engines.dsh`；产物 `index.js` / `client.js` 与 0.1.0 相同）；分支 `main`（有未 push 的提交）
+- 版本：`0.1.2`（0.1.1 的元数据 + 0.1.2 的回归修复；`index.js` / `client.js` 均已变更，待重启复测）；分支 `main`
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.5`（2026-11-19 从 `0.2.2-rc.3` 升级）
 
 ## 2. 一分钟上手
@@ -24,7 +24,7 @@ cd D:\Terry\Code\DSH-Plugin\dsh-video-workbench
 # 构建（源码 src/ → 根目录 index.js / client.js）
 node scripts/build.mjs
 
-# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（86 项）
+# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（99 项）
 node scripts/verify.mjs
 
 # 只跑测试
@@ -50,18 +50,19 @@ Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Ra
 ```text
 dsh-video-workbench/
 ├── src/host/index.ts            # apply 组装、ping/media/projects/selfcheck 路由、token、Range/ETag
-├── src/host/paths.ts            # safeResolve / isFilesystemRoot / contains
+├── src/host/atomic.ts           # 原子写（临时文件 + rename，失败连临时文件一起清）
+├── src/host/paths.ts            # safeResolve / isFilesystemRoot / contains / Windows 保留名
 ├── src/host/adapters/           # web-server.ts（registerRoute / onIndexInject / getOrigin + owner 过滤）
-│                                # logger.ts、lifecycle.ts（随插件生命周期清理的定时器）
+│                                # logger.ts（+ redactPath 日志脱敏）、lifecycle.ts（defer + 卸载清理）
 ├── src/host/projects/           # schema.ts（v1 校验）、migrate.ts、store.ts（原子写、slug、CRUD）、root.ts
-├── src/host/selfcheck.ts        # video_selfcheck 的 5 项检查（真实 HTTP 探测）
-├── src/host/selfcheck-report.ts # 启动自检结果写盘 / 读取
+├── src/host/selfcheck.ts        # video_selfcheck 的 5 项检查（真实 HTTP 探测、可 abort、skipped 语义）
+├── src/host/selfcheck-report.ts # 启动自检结果写盘 / 读取（逐项校验）
 ├── src/client/index.tsx         # ▶ 入口、浮层、播放器、错误重试；export default 插件对象
 ├── src/client/adapters/         # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）
 ├── src/shared/                  # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js         # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
-├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest}.test.mjs   # 86 项
+├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest}.test.mjs   # 99 项
 ├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
@@ -104,6 +105,8 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
     `src/host/adapters/web-server.ts` 里包了 try/catch，绑定前返回 `undefined`。
 11. **启动自检靠定时器**：`apply` 里 `defer(ctx, 3000, ...)`（`adapters/lifecycle.ts`）在监听绑定后跑自检，
     结果写到 `dataDir/selfcheck.json` 并打日志；`selfcheckOnStartup: false` 可关闭。
+    0.1.2 起 `defer` 支持卸载回调：插件卸载/热重载会 `abort` 正在跑的自检，不会再写旧报告；
+    `projectsRoot` 未配置时两项项目检查是 `skipped`（`ok: true`）而不是失败。
 12. **profile 侧配置按 id 覆盖**：profile 的 `cordis.patch.yml` 写
     `- id: video-workbench` / `name: dsh-video-workbench` / `config: {...}` 即可覆盖插件 Config；
     运行中手改可能被应用回写覆盖，改动前后都确认一次（备份在 profile 目录）。
@@ -117,6 +120,13 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
     **代价与检测**：不再有"版本不匹配自动停用"的保护，DSH 破坏性升级会照常加载插件；
     检测手段是启动自检（`node scripts/check-selfcheck.mjs`），失败就手动停用并复测。
     改范围前用该函数实测，别凭直觉；`test/manifest.test.mjs` 会锁定当前范围。
+15. **文件路由的 `Range` 语义**（0.1.2 起）：只处理单个 `bytes` 段。多段（`bytes=0-1,3-4`）、
+    未知单位、语法不认识的头**忽略并回 200 整文件**（RFC 9110 §14.2）；只有合法但取不到的
+    单个范围才回 `416`。旧实现把所有不认识的头都当 `416`，会打断多段下载器。
+16. **写盘统一走 `src/host/atomic.ts`**：临时文件也在 try 里，写临时文件本身失败（ENOSPC/EACCES）
+    不会再残留 `.tmp-*`。`project.json` 与 `selfcheck.json` 都用它。
+17. **日志里的路径要脱敏**：`adapters/logger.ts` 的 `redactPath` 把 home 前缀换成 `~`，其它绝对
+    路径只留最后两段（`…\video-projects`）。不要再把 `mediaRoot` / `projectsRoot` 原样打日志。
 
 ## 5. 已确认的决定
 
@@ -148,7 +158,7 @@ M1 五个步骤全部完成（提交见 `git log --oneline`）：
 | 4 | `feat: 增加 video_selfcheck` | 5 项检查、`/selfcheck` 路由、`getOrigin()` |
 | 5 | `docs: 更新 M1 验收记录` | README/INSTALL/COMPAT/HANDOFF/M1-PLAN、版本 0.1.0、启动自检报告 |
 
-自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、86 项测试）。
+自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、99 项测试）。
 
 ### 2026-11-19 数据完整性修复（M1 之后、客户端重启验收之前）
 
@@ -163,7 +173,7 @@ v0.1.0 接入客户端时出现 DSH 客户端数据损坏（已由用户修复�
 | 写 `project.json` 失败会留下空项目目录；`writeProject` 不建子目录 | 抽 `createProjectLayout` / `persistProject`，失败只清理本次新建的目录 | `writeProject` 布局与根目录守卫用例 |
 | `install.mjs` 直写 profile `package.json`，可能被截断 | 临时文件 + `rename` 原子写；卸载也读回校验 | `test/install.test.mjs`（临时 `DSH_HOME`：`--check`/`--dry-run`/安装/卸载/路径逃逸） |
 
-测试从 65 项增至 86 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
+测试从 65 项增至 99 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
 项目写入失败路径、manifest 元数据等用例）。
 
 Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发热重载，插件自动跑启动自检）：
@@ -242,3 +252,8 @@ Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Ra
   若将来要发布 tgz 并允许他人重建，需要把源码一并纳入。
 - `exportDir` 目前只有配置与日志，写入逻辑在 M2；工作区目录 `D:\Terry\Videos\dsh-video`
   还没在 DSH 里注册成工作区（可选，仅影响浏览体验）。
+- **0.1.2 回归修复仍待客户端实机复测**：`index.js` / `client.js` 都变了（Range 语义、nosniff、
+  客户端改用共享路由常量、面板标题去掉 M0），Host 侧行为已由 99 项测试覆盖；完全重启后
+  请再跑一次 `node scripts/check-selfcheck.mjs` 并点开 ▶ 复看一遍。
+- 未做的低优先项：`createProject` 并发同名竞态（`listProjects` 轮询时可能短暂看到半个项目）、
+  项目 `project.json` 未知字段静默忽略（有意为之，保持向前兼容）、面板文案未接 Client locale。

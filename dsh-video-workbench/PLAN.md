@@ -4,9 +4,9 @@
 > 平台范围：**Windows + DSH Desktop 优先**；Web 与 macOS 未验证，README 必须写明。
 > 当前 DSH：`0.2.2-rc.5`；渲染器：HyperFrames `0.6.33`（固定，不跟随 DSH 升级）。
 > M0 状态：**已完成**——渲染 10s@1080p = 15.2s、路由 206、`dsh-app://app` 下播放与拖动通过、取消无残留。结论见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
-> M1 状态：**已完成**（M1 于 v0.1.0 收尾，当前 v0.1.1：构建、适配层、项目模型/路由、`video_selfcheck`；
-> `verify` 全绿 + 86 项测试；2026-11-19 修复客户端 bundle 重复注册等数据完整性问题，
-> 并在 0.1.1 放宽 `engines.dsh` 到实测范围）；
+> M1 状态：**已完成**（M1 于 v0.1.0 收尾，当前 v0.1.2：构建、适配层、项目模型/路由、`video_selfcheck`；
+> `verify` 全绿 + 99 项测试；2026-11-19 修复客户端 bundle 重复注册等数据完整性问题，
+> 0.1.1 放宽 `engines.dsh`，0.1.2 修掉回归审查发现的 Range/校验/写盘问题）；
 > 桌面端完全重启后的实机验收**全部通过**（DSH `0.2.2-rc.5`：Host 自检 5/5 +
 > 客户端 ▶/token/206/播放拖动/Esc/重试，单次模块注册生效），明细见
 > [docs/M1-PLAN.md](docs/M1-PLAN.md) 第 10 节。

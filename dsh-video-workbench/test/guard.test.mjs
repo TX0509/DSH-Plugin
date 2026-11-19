@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
@@ -8,9 +9,12 @@ import {
   SELFCHECK_PATH,
   TOKEN_GLOBAL,
   apply,
+  contains,
+  defaultDataDir,
   defaultMediaRoot,
   isFilesystemRoot,
   matchesEtag,
+  redactPath,
 } from '../index.js'
 
 /** Minimal Cordis context: records what apply() registers. */
@@ -106,12 +110,41 @@ test('apply registers both routes and the index injector', () => {
   assert.equal(stub.messages.some((message) => message.includes('filesystem root')), false)
 })
 
-test('apply falls back to the default root when configured with a filesystem root', () => {
+test('redactPath: shortens configured paths for logs', () => {
+  const home = os.homedir()
+  const inside = path.join(home, 'Videos', 'dsh-video', 'video-projects')
+  assert.equal(redactPath(inside), path.join('~', 'Videos', 'dsh-video', 'video-projects'))
+  const outside = path.join(path.parse(home).root, 'Terry', 'Videos', 'video-exports')
+  const shortened = redactPath(outside)
+  assert.equal(shortened.includes('Terry'), false, 'intermediate directories must not be logged')
+  assert.ok(shortened.endsWith(path.join('Videos', 'video-exports')))
+})
+
+test('apply falls back to a safe root when mediaRoot is a filesystem root', () => {
   const stub = stubContext()
   apply(stub.ctx, { mediaRoot: path.parse(process.cwd()).root, selfcheckOnStartup: false })
 
   assert.equal(stub.routes.length, 3)
   const message = stub.messages.find((entry) => entry.includes('filesystem root'))
   assert.ok(message, 'expected a filesystem-root error log')
-  assert.ok(message.includes(defaultMediaRoot()), 'expected the fallback root in the log')
+  // Logs are redacted: the configured and fallback paths appear shortened, and
+  // the full absolute path never reaches the log.
+  assert.equal(message.includes(defaultMediaRoot()), false, 'full path must not be logged')
+  assert.ok(message.includes('…') || message.includes('~'), 'expected a redacted path in the log')
+})
+
+test('apply falls back to the default data dir when dataDir is a filesystem root', () => {
+  const stub = stubContext()
+  apply(stub.ctx, {
+    mediaRoot: path.join(process.cwd(), 'media'),
+    dataDir: path.parse(process.cwd()).root,
+    selfcheckOnStartup: false,
+  })
+
+  const message = stub.messages.find((entry) => entry.includes('dataDir'))
+  assert.ok(message, 'expected a dataDir error log')
+  assert.equal(message.includes(defaultDataDir()), false, 'full path must not be logged')
+  const dataDirLog = stub.messages.find((entry) => entry.includes('data dir:'))
+  assert.ok(dataDirLog, 'expected a data-dir log line')
+  assert.ok(dataDirLog.includes('~') || dataDirLog.includes('…'), 'expected a redacted path')
 })

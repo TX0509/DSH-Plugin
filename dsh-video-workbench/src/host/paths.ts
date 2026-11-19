@@ -30,7 +30,10 @@ export function isFilesystemRoot(candidate: string): boolean {
 export function contains(parent: string, child: string): boolean {
   const relative = path.relative(parent, child)
   if (relative === '') return false
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return false
+  // `..cache` is a child named "..cache", not a parent reference: compare whole
+  // segments instead of the raw prefix.
+  if (relative === '..' || relative.startsWith(`..${path.sep}`)) return false
+  if (path.isAbsolute(relative)) return false
   return true
 }
 

@@ -15,7 +15,7 @@ import {
   TOKEN_HEADER,
 } from '../shared/routes'
 
-import { hostLogger } from './adapters/logger'
+import { hostLogger, redactPath } from './adapters/logger'
 import { defer } from './adapters/lifecycle'
 import { withWebServer } from './adapters/web-server'
 import { contains, isFilesystemRoot, safeResolve } from './paths'
@@ -32,7 +32,8 @@ export {
   SELFCHECK_PATH,
   TOKEN_GLOBAL,
 } from '../shared/routes'
-export { isFilesystemRoot, safeResolve } from './paths'
+export { contains, isFilesystemRoot, safeResolve } from './paths'
+export { redactPath } from './adapters/logger'
 export { resolveProjectsRoot } from './projects/root'
 export { migrateProject } from './projects/migrate'
 export { ASPECTS, FPS_VALUES, SCHEMA_VERSION, validateProject } from './projects/schema'
@@ -85,6 +86,8 @@ export interface PluginConfig {
   selfcheckOnStartup?: boolean
   /** Delay before the startup self-check, in ms (default 3000). */
   selfcheckDelayMs?: number
+  /** Media file the probe reads, relative to mediaRoot (default `test.mp4`). */
+  selfcheckMediaPath?: string
   requireToken?: boolean
 }
 
@@ -114,7 +117,12 @@ interface SelfcheckRouteOptions {
 }
 
 type RangeBounds = { start: number; end: number }
-type ParsedRange = RangeBounds | 'invalid' | undefined
+/**
+ * `undefined` — no Range header; `'unrecognized'` — a Range we do not handle
+ * (unknown unit, multiple ranges, malformed syntax) and therefore ignore;
+ * `'unsatisfiable'` — a single valid `bytes` range that cannot be served (416).
+ */
+type ParsedRange = RangeBounds | 'unrecognized' | 'unsatisfiable' | undefined
 
 function dshHome(): string {
   return typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME.length > 0
@@ -131,27 +139,35 @@ export function defaultDataDir(): string {
   return path.join(dshHome(), 'cache', 'dsh-video-workbench')
 }
 
-/** Parse one `Range: bytes=` header. Returns undefined (no range), 'invalid', or bounds. */
+/**
+ * Parse one `Range: bytes=` header.
+ *
+ * Only a single `bytes` range is served. Anything else is *ignored* (the caller
+ * answers 200 with the whole file), because RFC 9110 §14.2 lets a server ignore
+ * a Range it does not support; 416 is reserved for a valid range that cannot be
+ * satisfied (RFC 9110 §15.5.17). The unit is case-insensitive per RFC 9110 §2.
+ */
 export function parseRange(header: string | undefined, size: number): ParsedRange {
   if (typeof header !== 'string') return undefined
-  const match = /^bytes=(\d*)-(\d*)$/u.exec(header.trim())
-  if (match === null) return 'invalid'
+  const match = /^bytes=(\d*)-(\d*)$/iu.exec(header.trim())
+  // Unknown unit, multiple ranges, or malformed syntax: ignore the header.
+  if (match === null) return 'unrecognized'
   const rawStart = match[1]
   const rawEnd = match[2]
-  if (rawStart === '' && rawEnd === '') return 'invalid'
+  if (rawStart === '' && rawEnd === '') return 'unrecognized'
   let start: number
   let end: number
   if (rawStart === '') {
     const suffix = Number(rawEnd)
-    if (!Number.isSafeInteger(suffix) || suffix <= 0) return 'invalid'
+    if (!Number.isSafeInteger(suffix) || suffix <= 0) return 'unrecognized'
     start = Math.max(0, size - suffix)
     end = size - 1
   } else {
     start = Number(rawStart)
     end = rawEnd === '' ? size - 1 : Number(rawEnd)
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return 'invalid'
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return 'unrecognized'
   }
-  if (start > end || start >= size || end < 0) return 'invalid'
+  if (start > end || start >= size || end < 0) return 'unsatisfiable'
   return { start, end: Math.min(end, size - 1) }
 }
 
@@ -255,6 +271,9 @@ function serveMedia(request: IncomingMessage, response: ServerResponse, context:
   const etag = `"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}-${Math.floor(stat.ctimeMs).toString(16)}"`
   const base: Record<string, string> = {
     'content-type': MIME[path.extname(real).toLowerCase()] ?? 'application/octet-stream',
+    // Media and project files are writable by the agent; never let the browser
+    // re-interpret an unknown extension as something executable.
+    'x-content-type-options': 'nosniff',
     'accept-ranges': 'bytes',
     'cache-control': 'private, max-age=3600',
     etag,
@@ -275,11 +294,14 @@ function serveMedia(request: IncomingMessage, response: ServerResponse, context:
   }
 
   const requested = request.headers['if-range']
-  const range: ParsedRange = requested === undefined || requested === etag
+  const parsed: ParsedRange = requested === undefined || requested === etag
     ? parseRange(request.headers.range, stat.size)
     : undefined
+  // A Range we do not handle is ignored (200 with the whole file); only a valid
+  // single range that cannot be satisfied gets 416.
+  const range: RangeBounds | undefined = typeof parsed === 'object' ? parsed : undefined
 
-  if (range === 'invalid') {
+  if (parsed === 'unsatisfiable') {
     response.writeHead(416, { ...base, 'content-range': `bytes */${stat.size}` })
     response.end()
     return
@@ -357,6 +379,7 @@ function createIndexInjector(token: string): (table: IndexInjection[]) => void {
 /**
  * `video_selfcheck` over HTTP: same token as the other routes, and the checks
  * inside run against the Host's own origin so route mounting is really tested.
+ * The run is aborted when the caller disconnects.
  */
 function createSelfcheckHandler(options: SelfcheckRouteOptions): (request: IncomingMessage, response: ServerResponse) => void {
   return (request, response) => {
@@ -369,10 +392,23 @@ function createSelfcheckHandler(options: SelfcheckRouteOptions): (request: Incom
       response.end()
       return
     }
-    void runSelfcheck(options)
-      .then((result) => sendJson(response, 200, result))
-      .catch((error: unknown) => {
-        sendJson(response, 500, { ok: false, error: String(error) })
+    const controller = new AbortController()
+    const abort = (): void => controller.abort()
+    request.once('close', abort)
+    response.once('close', abort)
+    void runSelfcheck({ ...options, signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return
+        sendJson(response, 200, result)
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return
+        // Details stay in the local log; the caller only needs to know it broke.
+        sendJson(response, 500, { ok: false, error: 'selfcheck-failed' })
+      })
+      .finally(() => {
+        request.off('close', abort)
+        response.off('close', abort)
       })
   }
 }
@@ -385,21 +421,36 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
   let mediaRoot = path.resolve(configured)
   if (isFilesystemRoot(mediaRoot)) {
     const fallback = path.resolve(defaultMediaRoot())
-    logger.error(`[video-workbench] mediaRoot "${mediaRoot}" is a filesystem root; falling back to ${fallback}`)
+    logger.error(`[video-workbench] mediaRoot "${redactPath(mediaRoot)}" is a filesystem root; falling back to ${redactPath(fallback)}`)
     mediaRoot = fallback
   }
-  const projects = resolveProjectsRoot(config.projectsRoot)
-  if (projects.state === 'invalid') logger.error(`[video-workbench] ${String(projects.detail)}`)
   const exportDir = typeof config.exportDir === 'string' && config.exportDir.trim().length > 0
     ? path.resolve(config.exportDir.trim())
     : undefined
-  const dataDir = typeof config.dataDir === 'string' && config.dataDir.trim().length > 0
+  let dataDir = typeof config.dataDir === 'string' && config.dataDir.trim().length > 0
     ? path.resolve(config.dataDir.trim())
     : defaultDataDir()
+  if (isFilesystemRoot(dataDir)) {
+    const fallback = path.resolve(defaultDataDir())
+    logger.error(`[video-workbench] dataDir "${redactPath(dataDir)}" is a filesystem root; falling back to ${redactPath(fallback)}`)
+    dataDir = fallback
+  }
+  const selfcheckMediaPath = typeof config.selfcheckMediaPath === 'string'
+    && config.selfcheckMediaPath.trim().length > 0
+    ? config.selfcheckMediaPath.trim()
+    : undefined
   const requireToken = config.requireToken !== false
   const token = randomBytes(24).toString('base64url')
 
   withWebServer(ctx, (server) => {
+    // Resolve (and create) the project root only once the plugin is actually
+    // active, so a profile without a web server does not create directories.
+    const projects = resolveProjectsRoot(config.projectsRoot)
+    if (projects.state === 'invalid') {
+      logger.error(`[video-workbench] ${String(projects.detail)}`
+        + `${typeof config.projectsRoot === 'string' ? ` (${redactPath(config.projectsRoot)})` : ''}`)
+    }
+
     // The page receives the token as a global during index injection; the
     // adapter serves only authenticated owner pages.
     server.onIndexInject(createIndexInjector(token))
@@ -452,6 +503,9 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
         && Number.isFinite(config.selfcheckDelayMs) && config.selfcheckDelayMs >= 0
         ? config.selfcheckDelayMs
         : 3000
+      // Aborted on unload so a run that already started cannot write a report
+      // or log after the plugin is gone.
+      const controller = new AbortController()
       defer(ctx, delayMs, 'video-workbench:selfcheck', () => {
         void runSelfcheck({
           getOrigin: () => server.origin(),
@@ -459,29 +513,38 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
           requireToken,
           mediaRoot,
           projects,
+          mediaProbePath: selfcheckMediaPath,
+          signal: controller.signal,
         }).then((result) => {
-          const failed = result.checks.filter((check) => !check.ok)
+          if (controller.signal.aborted) return
           try {
             writeSelfcheckReport(dataDir, result)
           } catch (error) {
             logger.error(`[video-workbench] 无法写入 selfcheck 报告: ${String(error)}`)
           }
+          const failed = result.checks.filter((check) => !check.ok)
+          const skipped = result.checks.filter((check) => check.skipped === true)
+          const skippedNote = skipped.length === 0
+            ? ''
+            : `（${skipped.length} 项跳过：${skipped.map((check) => check.name).join('、')}）`
           if (failed.length === 0) {
-            logger.info(`[video-workbench] selfcheck: ${result.checks.length} 项全部通过`)
+            logger.info(`[video-workbench] selfcheck: ${result.checks.length - skipped.length} 项通过${skippedNote}`)
           } else {
             logger.error(`[video-workbench] selfcheck ${result.checks.length - failed.length}/${result.checks.length} 通过：`
               + failed.map((check) => `${check.name}（${check.detail}）`).join('；'))
           }
         }).catch((error: unknown) => {
+          if (controller.signal.aborted) return
           logger.error(`[video-workbench] selfcheck 异常: ${String(error)}`)
         })
-      })
+      }, () => controller.abort())
     }
+
+    logger.info(`[video-workbench] projects: ${projects.state}`
+      + `${projects.root === undefined ? '' : ` (${redactPath(projects.root)})`}`
+      + `${exportDir === undefined ? '' : `, export: ${redactPath(exportDir)}`}`)
   })
 
-  logger.info(`[video-workbench] media root: ${mediaRoot} (token required: ${requireToken})`)
-  logger.info(`[video-workbench] projects: ${projects.state}`
-    + `${projects.root === undefined ? '' : ` (${projects.root})`}`
-    + `${exportDir === undefined ? '' : `, export: ${exportDir}`}`)
-  logger.info(`[video-workbench] data dir: ${dataDir}`)
+  logger.info(`[video-workbench] media root: ${redactPath(mediaRoot)} (token required: ${requireToken})`)
+  logger.info(`[video-workbench] data dir: ${redactPath(dataDir)}`)
 }

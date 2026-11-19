@@ -1,6 +1,7 @@
 import * as React from 'react'
 
 import type { ClientSlotContext } from '../shared/dsh'
+import { MEDIA_PATH, PING_PATH } from '../shared/routes'
 
 import { hostUrl, installStyles, readToken } from './adapters/context'
 import { registerEntry, registerOverlay } from './adapters/slots'
@@ -9,7 +10,10 @@ const h = React.createElement
 
 const OPEN_EVENT = 'dshvw:toggle'
 
-const mediaUrl = (name: string): string => hostUrl('api/video-workbench/media', {
+/** The sample clip M1 ships for the self-check and the overlay player. */
+const SAMPLE_MEDIA = 'test.mp4'
+
+const mediaUrl = (name: string): string => hostUrl(MEDIA_PATH, {
   path: name,
   t: readToken(),
 })
@@ -136,14 +140,14 @@ function Panel(): React.ReactElement | null {
         return
       }
       try {
-        const pingResponse = await fetch(hostUrl('api/video-workbench/ping', { t: token }))
+        const pingResponse = await fetch(hostUrl(PING_PATH, { t: token }))
         const ping: unknown = await pingResponse.json()
-        const probe = await fetch(mediaUrl('test.mp4'), { headers: { Range: 'bytes=0-99' } })
+        const probe = await fetch(mediaUrl(SAMPLE_MEDIA), { headers: { Range: 'bytes=0-99' } })
         if (cancelled) return
         setDiag(JSON.stringify({
           origin: window.location.origin,
           baseURI: document.baseURI,
-          mediaUrl: maskToken(mediaUrl('test.mp4')),
+          mediaUrl: maskToken(mediaUrl(SAMPLE_MEDIA)),
           tokenPresent: true,
           ping,
           media: {
@@ -191,8 +195,8 @@ function Panel(): React.ReactElement | null {
   }, [
     h('header', { className: 'dshvw-head', key: 'head' }, [
       h('div', { key: 'title' }, [
-        h('h2', { className: 'dshvw-title', key: 'h' }, '视频工作台 · M0'),
-        h('p', { className: 'dshvw-sub', key: 'p' }, '验证 dsh-app 下的路由、鉴权与 Range 播放'),
+        h('h2', { className: 'dshvw-title', key: 'h' }, '视频工作台'),
+        h('p', { className: 'dshvw-sub', key: 'p' }, '自检：路由挂载、访问令牌与 Range 播放'),
       ]),
       h('button', {
         key: 'close',
@@ -214,7 +218,7 @@ function Panel(): React.ReactElement | null {
     error === '' ? h('video', {
       key: `video-${attempt}`,
       className: 'dshvw-video',
-      src: mediaUrl('test.mp4'),
+      src: mediaUrl(SAMPLE_MEDIA),
       controls: true,
       preload: 'metadata',
       onLoadedMetadata: (event: React.SyntheticEvent<HTMLVideoElement>) =>

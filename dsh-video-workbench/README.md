@@ -1,10 +1,10 @@
 # dsh-video-workbench
 
-DSH Desktop 的短视频制作工作台插件。当前处于 **M1（骨架与播放）代码完成** 阶段：
+DSH Desktop 的短视频制作工作台插件。**M1（骨架与播放）已完成并通过实机验收**：
 TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只读项目路由、`video_selfcheck` 已就位；
 渲染与素材/配音在 M2–M3。
 
-> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、86 项测试）；
+> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、99 项测试）；
 > 2026-11-19 在 DSH Desktop `0.2.2-rc.5` 上**完全重启后的实机验收全部通过**（Host 自检 5/5 +
 > 客户端 ▶/token/206/播放拖动/Esc/重试，单次模块注册生效）。下一阶段见 `PLAN.md` M2。
 
@@ -23,12 +23,13 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.0.2 | Esc 关闭 / 焦点归还 | ✅ 关闭后焦点回到 ▶ 按钮 |
 | v0.0.3 | 重启后复测 | ✅ `ping` 不再返回 `node`；token、206、播放至 1.56s 均通过 |
 | v0.0.4 | 重启后全链路复测 | ✅ token、206、播放、拖动 seek、错误态与"重试"、视频聚焦时 Esc 关闭 全部通过 |
-| v0.1.0（M1） | 类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 86 项测试 | ✅ `node scripts/verify.mjs` 全绿（需产物已提交） |
+| v0.1.0（M1） | 类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 测试 | ✅ `node scripts/verify.mjs` 全绿（需产物已提交） |
 | v0.1.0（M1） | 运行中的 Desktop 热重载 Host 后启动自检 | ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 升级到 rc.5 后重新安装 + 启动自检 | ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 桌面端完全重启后的客户端验收 | ✅ 全部通过：单个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、视频聚焦时 Esc、错误态重试；亮/暗、侧栏展开/收起、窄窗口正常；无重复浮层、无 `slot entry crashed` |
-| v0.1.1 | `engines.dsh` 改为 `>=0.2.2-rc.5`（自用、不设上限）+ manifest 契约测试 | ✅ 产物与 0.1.0 逐字节相同（`verify` 的 artifact 校验通过），`verify` 全绿（86 项）；用 DSH 自带判定函数复核：rc.5 及以后全部放行、rc.4 及更早拒绝；运行中的插件未受影响 |
+| v0.1.1 | `engines.dsh` 改为 `>=0.2.2-rc.5`（自用、不设上限）+ manifest 契约测试 | ✅ 产物与 0.1.0 逐字节相同（`verify` 的 artifact 校验通过），`verify` 全绿；用 DSH 自带判定函数复核：rc.5 及以后全部放行、rc.4 及更早拒绝；运行中的插件未受影响 |
+| v0.1.2 | 回归审查后的修复批次（Range 语义、场景 id 唯一性、写盘与自检加固、`nosniff`、日志脱敏等） | ✅ 本地 `verify` 全绿、99 项测试；`index.js` / `client.js` 均有变更，**实机客户端需完全重启后复测**（见「M1 验收」） |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 
@@ -40,15 +41,19 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 - `GET /api/video-workbench/projects?path=<slug>/<file>&t=<token>`：带 Range 的**项目文件**读取
   （`project.json`、`renders/v1.mp4` 等）；`projectsRoot` 未配置时不挂载。
 - `GET /api/video-workbench/selfcheck?t=<token>`：`video_selfcheck` 的 5 项检查，返回
-  `{ ok, checks: [{ name, ok, detail }] }`；启动 3 秒后也会自动跑一次并把结果写入
-  `$DSH_HOME/cache/dsh-video-workbench/selfcheck.json`。
+  `{ ok, checks: [{ name, ok, skipped?, detail }] }`；启动 3 秒后也会自动跑一次并把结果写入
+  `$DSH_HOME/cache/dsh-video-workbench/selfcheck.json`。未配置 `projectsRoot` 时两项项目检查
+  标记为 `skipped`（不算失败），因此整份报告仍为 `ok`。
 - 客户端：composer 左侧 ▶ 按钮 → `shell.overlay` 浮层 → 播放测试视频 + 诊断信息。
 
 三条文件路由共用同一套实现与同一 token：
 
-- 路径白名单：最多 5 段，拒绝 `..`、绝对路径、隐藏文件、Windows 保留字符；支持中文名。
+- 路径白名单：最多 5 段，拒绝 `..`、绝对路径、隐藏文件、Windows 保留字符与设备名；支持中文名。
 - 符号链接逃逸会被拒绝（按 `realpath` 校验真实路径仍在根目录内）。
 - 支持 `206` / `416` / `304`（`If-None-Match`、`If-Range`）、`HEAD`，其余方法 `405`。
+- `Range` 只处理单个 `bytes` 段：多段、未知单位等不支持的写法按 RFC 9110 忽略该头并返回
+  整个文件（200）；只有语法合法但取不到的单个范围才回 `416`。
+- 所有文件响应带 `x-content-type-options: nosniff`（内容目录可被 agent 写入，避免浏览器嗅探）。
 
 ## 项目模型（M1）
 
@@ -125,7 +130,7 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ```powershell
 cd dsh-video-workbench
-node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（86）
+node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（99）
 node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
 ```
 
@@ -163,7 +168,7 @@ node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文
 ```sh
 node scripts/build.mjs     # src/ → 根目录 index.js / client.js
 node scripts/verify.mjs    # 一条命令跑完全部检查
-node --test                # 只跑测试（86 项）
+node --test                # 只跑测试（99 项）
 ```
 
 ## 未完成

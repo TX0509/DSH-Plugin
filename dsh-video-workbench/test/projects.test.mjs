@@ -218,6 +218,8 @@ test('validateProject: rejects malformed scenes and media', () => {
   const cases = [
     ['scenes 数量', { scenes: [] }],
     ['scenes[0].id', { scenes: [{ ...validProject().scenes[0], id: 'x1' }] }],
+    ['scenes[0].id', { scenes: [{ ...validProject().scenes[0], id: 's01' }] }],
+    ['scenes[0].id', { scenes: [{ ...validProject().scenes[0], id: 's1000' }] }],
     ['scenes[0].durationSec', { scenes: [{ ...validProject().scenes[0], durationSec: 0 }] }],
     ['durationSec', { scenes: [{ ...validProject().scenes[0], durationSec: 1.2345 }] }],
     ['media.asset', { scenes: [{ ...validProject().scenes[0], media: { kind: 'none', asset: 'assets/a.png' } }] }],
@@ -241,13 +243,43 @@ test('validateProject: rejects malformed scenes and media', () => {
   assert.ok(tooMany.errors.join(' | ').includes('scenes 数量'))
 })
 
+test('validateProject: scene ids must be unique', () => {
+  const duplicate = validateProject(validProject({
+    scenes: [
+      { ...validProject().scenes[0], id: 's1' },
+      { ...validProject().scenes[0], id: 's1' },
+    ],
+  }))
+  assert.equal(duplicate.ok, false)
+  assert.ok(duplicate.errors.join(' | ').includes('唯一'))
+
+  // `s01` is not canonical, so it cannot alias `s1`.
+  const alias = validateProject(validProject({
+    scenes: [
+      { ...validProject().scenes[0], id: 's1' },
+      { ...validProject().scenes[0], id: 's01' },
+    ],
+  }))
+  assert.equal(alias.ok, false)
+
+  const distinct = validateProject(validProject({
+    scenes: [
+      { ...validProject().scenes[0], id: 's0' },
+      { ...validProject().scenes[0], id: 's1' },
+      { ...validProject().scenes[0], id: 's999' },
+    ],
+  }))
+  assert.equal(distinct.ok, true)
+})
+
 test('migrateProject: treats a missing schemaVersion as v1', () => {
   const raw = validProject()
   delete raw.schemaVersion
   const result = migrateProject(raw)
   assert.equal(result.ok, true)
   assert.equal(result.value.schemaVersion, 1)
-  assert.equal(result.from, 1)
+  // `0` records "the file carried no version"; it is not a real v1 file.
+  assert.equal(result.from, 0)
 })
 
 test('migrateProject: rejects unknown and non-integer versions', () => {
@@ -294,6 +326,26 @@ test('createProject: an invalid title leaves no directory behind', () => {
     const result = createProject(projectsRoot, { title: '   ' }, { now: FIXED })
     assert.equal(result.ok, false)
     assert.deepEqual(readdirSync(projectsRoot), [])
+  } finally {
+    removeRoots(projectsRoot)
+  }
+})
+
+test('createProject: unusable roots are reported, not thrown', () => {
+  const { projectsRoot } = temporaryRoots()
+  try {
+    const filesystemRoot = path.parse(process.cwd()).root
+    const refused = createProject(filesystemRoot, { title: 'x' }, { now: FIXED })
+    assert.equal(refused.ok, false)
+    assert.ok(refused.errors.join(' ').includes('盘符根目录'))
+
+    // A path that exists but is not a directory: ensureProjectRoot throws
+    // internally, so this is the case that used to escape as an exception.
+    const notADir = path.join(projectsRoot, 'not-a-dir.txt')
+    writeFileSync(notADir, 'x', 'utf8')
+    const asFile = createProject(notADir, { title: 'x' }, { now: FIXED })
+    assert.equal(asFile.ok, false)
+    assert.ok(asFile.errors.length > 0)
   } finally {
     removeRoots(projectsRoot)
   }
@@ -404,6 +456,24 @@ test('listProjects: newest first and broken projects reported separately', () =>
     assert.deepEqual(listed.projects.map((entry) => entry.id), [newer.project.id, older.project.id])
     assert.deepEqual(listed.projects.map((entry) => entry.title), ['新项目', '旧项目'])
     assert.deepEqual(listed.invalid.map((entry) => entry.id), ['20261117-080000'])
+  } finally {
+    removeRoots(projectsRoot)
+  }
+})
+
+test('listProjects: same-second collisions sort by attempt number, newest first', () => {
+  const { projectsRoot } = temporaryRoots()
+  try {
+    const ids = []
+    for (let index = 0; index < 12; index += 1) {
+      const created = createProject(projectsRoot, { title: `项目 ${index}` }, { now: FIXED })
+      assert.equal(created.ok, true)
+      ids.push(created.project.id)
+    }
+    const listed = listProjects(projectsRoot)
+    assert.equal(listed.projects.length, 12)
+    // Plain string order would put `…-2` before `…-10`.
+    assert.deepEqual(listed.projects.map((entry) => entry.id), [...ids].reverse())
   } finally {
     removeRoots(projectsRoot)
   }

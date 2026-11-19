@@ -58,7 +58,12 @@ export type ValidationResult =
   | { ok: false; errors: string[] }
 
 const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u
-const SCENE_ID = /^s[0-9]+$/u
+/**
+ * Canonical scene ids: `s0`…`s999`, no leading zeros. Canonical form matters
+ * because the id is the key later stages use for assets and captions, so
+ * `s01` and `s1` must not be able to coexist.
+ */
+const SCENE_ID = /^s(?:0|[1-9][0-9]{0,2})$/u
 
 /** Project ids double as directory names; the store reuses this rule. */
 export function isProjectId(value: string): boolean {
@@ -245,7 +250,7 @@ function readScenes(value: unknown, errors: Errors): ProjectScene[] | undefined 
     }
     const id = raw.id
     if (typeof id !== 'string' || !SCENE_ID.test(id)) {
-      errors.push(`${field}.id 必须匹配 ^s[0-9]+$`)
+      errors.push(`${field}.id 必须是 s0–s999 形式的规范 id（无前导零）`)
     }
     const text = raw.text
     if (typeof text !== 'string' || textLength(text) > MAX_TEXT) {
@@ -264,7 +269,18 @@ function readScenes(value: unknown, errors: Errors): ProjectScene[] | undefined 
       scenes.push({ id, text, durationSec: duration, media, voice, captions })
     }
   }
-  return scenes.length === value.length ? scenes : undefined
+  if (scenes.length !== value.length) return undefined
+  // Scene ids are the key for assets, captions and renders downstream, so a
+  // duplicate would silently overwrite another scene's media.
+  const seen = new Set<string>()
+  for (const scene of scenes) {
+    if (seen.has(scene.id)) {
+      errors.push(`scenes 的 id 必须唯一：重复 ${scene.id}`)
+      return undefined
+    }
+    seen.add(scene.id)
+  }
+  return scenes
 }
 
 /** Validate and normalize an unknown value into a v1 project. */

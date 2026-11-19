@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，**M2 已完成**（版本 `0.2.0`，真实渲染冒烟通过；浮层 UI 待重启确认）；下一步 M3。
+> 最后更新：2026-11-19，**M2 已完成**（版本 `0.2.1`：渲染链路真机通过；入口改为左侧栏面板，待重启确认）；下一步 M3。
 
 ## 1. 这是什么
 
@@ -10,10 +10,10 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M2 完成**（渲染运行时供给、渲染任务/进度/取消/超时、产物保留与导出、浮层渲染 UI）；
+- 当前阶段：**M2 完成**（渲染运行时供给、渲染任务/进度/取消/超时、产物保留与导出、左侧栏工作台面板）；
   M2 的执行文档与被推翻的假设见 [M2-PLAN.md](M2-PLAN.md)
 - 已实机验证：DSH Desktop `0.2.2-rc.5` 完全重启后 Host 自检 **5/5** + 客户端半区**全部通过**（2026-11-19）
-- 待办：浮层 UI 实机确认 + M3（素材与配音）；Web / macOS 仍未验证
+- 待办：侧栏入口实机确认 + M3（素材与配音）；Web / macOS 仍未验证
 - 版本：`0.2.0`（M2；`index.js` / `client.js` 均已变更，需重启验证 UI）；分支 `main`
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.5`（2026-11-19 从 `0.2.2-rc.3` 升级）
 
@@ -65,7 +65,7 @@ dsh-video-workbench/
 ├── src/host/render/             # args.ts（argv）、progress.ts（ANSI + 阶段）、process.ts（进程树/孤儿）、
 │                                # jobs.ts（状态机/队列/超时/产物）、outputs.ts（版本/保留/导出）、
 │                                # scaffold.ts（离线合成脚手架）、routes.ts（渲染三接口）
-├── src/client/index.tsx         # ▶ 入口、浮层、播放器、错误重试；export default 插件对象
+├── src/client/index.tsx         # 侧栏图标 + 主面板页面（渲染/进度/播放器）；export default 插件对象
 ├── src/client/adapters/         # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）
 ├── src/shared/                  # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js         # 构建产物（已提交，首行有生成标记）
@@ -254,8 +254,8 @@ console.table(r.checks); r.ok
 | 取消/超时/孤儿 | 单元与集成用例覆盖（假 CLI + 真实进程树 kill）；启动时清理上次遗留的渲染进程 |
 | 自检 | 8 项：路由/token/media/项目×2 + 运行时/浏览器/ffmpeg |
 
-**剩余一步（需要人做）**：浮层 UI 的实机确认 —— 完全退出并重开 DSH，打开 ▶ 后应能看到
-「安装运行时（已就绪）/ 选项目 / 渲染 / 取消 / 播放成片」，进度从 5% 走到 100%。截图补进 `docs/`。
+**剩余一步（需要人做）**：v0.2.1 侧栏入口的实机确认 —— 完全退出并重开 DSH 后，左侧栏面板列表应出现「视频工作台」（场记板图标），
+点开是主面板页面（安装运行时 / 选项目 / 渲染 / 取消 / 播放成片，进度 5%→100%）。截图补进 `docs/`。
 
 M3 素材与配音开工前：读 [PLAN.md](../PLAN.md) 的 M3 一行 + [M0-FINDINGS.md](M0-FINDINGS.md)
 的环境变量结论；合成脚手架在 `src/host/render/scaffold.ts`，M3/M4 会把它换成真正的 HyperFrames 模板
@@ -286,8 +286,8 @@ Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Ra
   若将来要发布 tgz 并允许他人重建，需要把源码一并纳入。
 - `exportDir` 目前只有配置与日志，写入逻辑在 M2；工作区目录 `D:\Terry\Videos\dsh-video`
   还没在 DSH 里注册成工作区（可选，仅影响浏览体验）。
-- **0.2.0（M2）浮层 UI 仍待实机确认**：`index.js` / `client.js` 都变了（渲染 UI、Range 语义、nosniff、
+- **0.2.1 侧栏入口仍待实机确认**：`client.js` 变了（入口从 composer 移到 `sidebar.panellist` + `main`，Range 语义、nosniff、
   客户端改用共享路由常量、面板标题去掉 M0），Host 侧行为已由 161 项测试覆盖；完全重启后
-  请再跑一次 `node scripts/check-selfcheck.mjs` 并点开 ▶ 复看一遍。
+  请再跑一次 `node scripts/check-selfcheck.mjs` 并从左侧栏打开工作台复看一遍。
 - 未做的低优先项：`createProject` 并发同名竞态（`listProjects` 轮询时可能短暂看到半个项目）、
   项目 `project.json` 未知字段静默忽略（有意为之，保持向前兼容）、面板文案未接 Client locale。

@@ -1,7 +1,7 @@
 # M2 执行计划：渲染管线
 
 > 状态：**全部步骤已完成**（2026-11-19，v0.2.0）。步骤 7 的实机验收：`render-smoke.mjs` 通过，
-> 浮层 UI 需完全重启 DSH 后确认；执行中被推翻的假设见 §14。）
+> 渲染 UI 需完全重启 DSH 后确认；执行中被推翻的假设见 §14。v0.2.1 起入口从 composer 移到左侧栏面板。）
 > 基线 v0.1.2（M1 完成并通过实机验收，`verify` 全绿、127 项测试）。
 > 本文对应 [PLAN.md](../PLAN.md) 里程碑表里「M2 渲染管线」那一行，把它拆成可以照着执行的步骤、
 > 接口、命令与验收标准；结构对齐 [M1-PLAN.md](M1-PLAN.md)。
@@ -18,7 +18,7 @@ M2 结束时应当：
 - 能在 **Host 里发起一次渲染**：`composition/` → `renders/vN.mp4`，带进度、可取消、有超时；
 - 渲染只走子进程，**并发 1**；取消/超时/进程退出后**无 Chrome 与 node 残留**、无半成品文件；
 - 产物原子落地，**保留最近 N 个**（默认 5），`exportDir` 复制一份（失败只记日志）；
-- 客户端浮层里能点「渲染」看到进度与结果，并能取消；
+- 客户端工作台面板里能点「渲染」看到进度与结果，并能取消；
 - `video_selfcheck` 增加运行时/浏览器/ffmpeg 的真实性检查（不信 `hyperframes doctor`）。
 
 **不做**：素材抓取/生图/TTS（M3）、agent 工具与结果卡（M4）、lint 门禁（M4）、
@@ -36,7 +36,7 @@ M2 结束时应当：
 | 原子写 | `writeFileAtomic(target, text)` | `src/host/atomic.ts` |
 | 日志 | `hostLogger` + `redactPath`（home→`~`） | `src/host/adapters/logger.ts` |
 | 构建/校验 | `node scripts/verify.mjs`：类型→边界→构建→产物形态→产物一致→语法→测试 | `scripts/verify.mjs` |
-| 客户端 | ▶ 入口 + `shell.overlay` 浮层（播放器 + 诊断），单次模块注册 | `src/client/index.tsx` |
+| 客户端 | 左侧栏面板图标（`sidebar.panellist`）+ 主面板页面（`main` key），单次模块注册 | `src/client/index.tsx` |
 
 **可直接落地的目录约定**（M1 已建）：`<projectsRoot>/<slug>/{project.json,composition,assets,renders}`。
 
@@ -268,7 +268,7 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | 3 | `feat: 增加渲染任务服务` | `jobs.ts`：状态机、并发 1、队列、超时；`render/routes.ts` 三个接口 | ✅ fake CLI 跑通成功/取消/超时/队列满；真机走通全链路 |
 | 4 | `feat: 增加进度解析与取消清理` | `progress.ts`、`process.ts`、孤儿扫描、卸载清理 | ✅ 真实格式进度解析、取消/超时杀进程树、启动孤儿清理 |
 | 5 | `feat: 增加产物落地与保留策略` | `outputs.ts`：版本递增、原子 rename、ffprobe 校验、保留 N、exportDir 复制与 `safeTitle` | ✅ 真机产物 `10.000000s / 1080×1920`，`index.json` 与导出副本正确 |
-| 6 | `feat: 客户端渲染入口与进度 UI` | 浮层加「渲染 / 取消」+ 状态行 + 结果 `<video>`（复用现有播放器） | ✅ 代码与 bundle 测试通过；**实机需完全重启 DSH 后确认** |
+| 6 | `feat: 客户端渲染入口与进度 UI` | 工作台面板加「渲染 / 取消」+ 状态行 + 结果 `<video>`（复用现有播放器） | ✅ 真机跑通 10s 成片；v0.2.1 入口改到左侧栏 |
 | 7 | `docs: 更新 M2 验收记录` | README / INSTALL / COMPAT / HANDOFF / 截图 | ✅ 文档与实测一致（截图留待 UI 实机验收后补） |
 
 每一步都必须先写测试再动实现（纯函数优先）；步骤 3–5 用**假 CLI**（`test/fixtures/fake-hyperframes.mjs`）
@@ -364,7 +364,7 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | 用命名 web 字体 | 非通用字族会联网抓 Google Fonts | 脚手架只用 `sans-serif`；自定义字体需本地 `@font-face` |
 | 项目一定已有文案 | M1 示例项目分镜文案为空 → 成片全黑 | 脚手架对空文案兜底（首镜用项目标题、其余用「分镜 N」） |
 | 播放器按宽度自适应即可 | 9:16 成片按宽度铺满会有 1900+ px 高，弹层超出屏幕 | 成片限高（`max-height:min(52vh,460px)`），弹层用 `100dvh` 封顶 |
-| 项目由用户自己创建 | UI 里没有创建入口，无法在应用内完成 10s 验收 | 新增 `POST /projects-create`（2 分镜/合计 10s 示例）+ 浮层「新建 10 秒示例」按钮 |
+| 项目由用户自己创建 | UI 里没有创建入口，无法在应用内完成 10s 验收 | 新增 `POST /projects-create`（2 分镜/合计 10s 示例）+「新建 10 秒示例」按钮 |
 
 ## 15. 开工前的一次性核对（步骤 0 内容预告）
 

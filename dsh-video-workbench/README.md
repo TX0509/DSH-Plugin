@@ -2,46 +2,47 @@
 
 DSH Desktop 的短视频制作工作台插件。**M1（骨架与播放）与 M2（渲染管线）已完成**：
 TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型、只读项目路由、`video_selfcheck`、
-渲染运行时供给、渲染任务（进度/取消/超时）、成片保留与导出、浮层内渲染 UI 已就位；
+渲染运行时供给、渲染任务（进度/取消/超时）、成片保留与导出、左侧栏工作台面板已就位；
 素材与配音在 M3。
 
 > **M2 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、161 项测试）；
 > 实机渲染冒烟通过：`node scripts/render-smoke.mjs` → **10.000s / 1080×1920 / 300 帧**，约 13 秒完成，
 > `renders/index.json` 与 `exportDir` 副本均生成。客户端 UI 需完全重启 DSH 后验证（见「M2 验收」）。
 
-![视频工作台浮层](docs/m0-overlay.png)
+![视频工作台](docs/m0-overlay.png)（M0 截图；侧栏入口见 INSTALL 的验收步骤）
 
 ## 已验证
 
-  阶段   项   结果  
-  ---   ---   ---  
-  v0.0.1（M0，无 token）   10s@1080p 渲染（hyperframes 0.6.33）   ✅ 15.2 秒，3.12 MB  
-  v0.0.1   取消渲染   ✅ 进程树清理干净，无半成品  
-  v0.0.1   `dsh-app://app` 下播放与拖动   ✅ 播放至 1.24s；拖动到 8.00s 渲染末帧  
-  v0.0.2   token 注入   ✅ 完全重启后 `tokenPresent: true`  
-  v0.0.2   带 token 的 `ping` / `media`   ✅ `ping` 200；media 206 + `Content-Range: bytes 0-99/1548444`  
-  v0.0.2   带 token 的播放   ✅ 播放至 2.09s，画面推进（见截图）  
-  v0.0.2   Esc 关闭 / 焦点归还   ✅ 关闭后焦点回到 ▶ 按钮  
-  v0.0.3   重启后复测   ✅ `ping` 不再返回 `node`；token、206、播放至 1.56s 均通过  
-  v0.0.4   重启后全链路复测   ✅ token、206、播放、拖动 seek、错误态与"重试"、视频聚焦时 Esc 关闭 全部通过  
-  v0.1.0（M1）   类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 测试   ✅ `node scripts/verify.mjs` 全绿（需产物已提交）  
-  v0.1.0（M1）   运行中的 Desktop 热重载 Host 后启动自检   ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200  
-  v0.1.0（M1）   项目路由真实读取   ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例）  
-  v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5`   升级到 rc.5 后重新安装 + 启动自检   ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200  
-  v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5`   桌面端完全重启后的客户端验收   ✅ 全部通过：单个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、视频聚焦时 Esc、错误态重试；亮/暗、侧栏展开/收起、窄窗口正常；无重复浮层、无 `slot entry crashed`  
-  v0.1.1   `engines.dsh` 改为 `>=0.2.2-rc.5`（自用、不设上限）+ manifest 契约测试   ✅ 产物与 0.1.0 逐字节相同（`verify` 的 artifact 校验通过），`verify` 全绿；用 DSH 自带判定函数复核：rc.5 及以后全部放行、rc.4 及更早拒绝；运行中的插件未受影响  
-  v0.1.2   回归审查后的修复批次（Range 语义、场景 id 唯一性、写盘与自检加固、`nosniff`、日志脱敏等）   ✅ 本地 `verify` 全绿、161 项测试；`index.js` / `client.js` 均有变更  
-  v0.2.0（M2）   运行时从零供给（hyperframes 0.6.33 + ffmpeg/ffprobe）   ✅ 真实安装成功，`supplied.json` 生成，两个二进制 `-version` 通过（约 840 MB）  
-  v0.2.0（M2）   渲染任务全链路（脚手架 → 渲染 → 进度 → 产物）   ✅ `render-smoke.mjs`：300/300 帧、`10.000000s`、`1080×1920`、约 13 秒；`renders/index.json` + `exportDir` 副本正确  
-  v0.2.0（M2）   取消 / 超时 / 孤儿清理 / 保留策略（假 CLI + 真机进程）   ✅ 单元与集成用例覆盖；取消后无残留进程与 `.tmp`  
-  v0.2.0（M2）   浮层渲染 UI（运行时状态、安装、项目选择、进度、取消、播放成片）   ⏳ **需完全重启 DSH 后实机确认**  
+| 阶段 | 项 | 结果 |
+| --- | --- | --- |
+| v0.0.1（M0，无 token） | 10s@1080p 渲染（hyperframes 0.6.33） | ✅ 15.2 秒，3.12 MB |
+| v0.0.1 | 取消渲染 | ✅ 进程树清理干净，无半成品 |
+| v0.0.1 | `dsh-app://app` 下播放与拖动 | ✅ 播放至 1.24s；拖动到 8.00s 渲染末帧 |
+| v0.0.2 | token 注入 | ✅ 完全重启后 `tokenPresent: true` |
+| v0.0.2 | 带 token 的 `ping` / `media` | ✅ `ping` 200；media 206 + `Content-Range: bytes 0-99/1548444` |
+| v0.0.2 | 带 token 的播放 | ✅ 播放至 2.09s，画面推进（见截图） |
+| v0.0.2 | Esc 关闭 / 焦点归还 | ✅ 关闭后焦点回到 ▶ 按钮 |
+| v0.0.3 | 重启后复测 | ✅ `ping` 不再返回 `node`；token、206、播放至 1.56s 均通过 |
+| v0.0.4 | 重启后全链路复测 | ✅ token、206、播放、拖动 seek、错误态与"重试"、视频聚焦时 Esc 关闭 全部通过 |
+| v0.1.0（M1） | 类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 测试 | ✅ `node scripts/verify.mjs` 全绿（需产物已提交） |
+| v0.1.0（M1） | 运行中的 Desktop 热重载 Host 后启动自检 | ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200 |
+| v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
+| v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 升级到 rc.5 后重新安装 + 启动自检 | ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200 |
+| v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 桌面端完全重启后的客户端验收 | ✅ 全部通过：单个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、视频聚焦时 Esc、错误态重试；亮/暗、侧栏展开/收起、窄窗口正常；无重复浮层、无 `slot entry crashed` |
+| v0.1.1 | `engines.dsh` 改为 `>=0.2.2-rc.5`（自用、不设上限）+ manifest 契约测试 | ✅ 产物与 0.1.0 逐字节相同（`verify` 的 artifact 校验通过），`verify` 全绿；用 DSH 自带判定函数复核：rc.5 及以后全部放行、rc.4 及更早拒绝；运行中的插件未受影响 |
+| v0.1.2 | 回归审查后的修复批次（Range 语义、场景 id 唯一性、写盘与自检加固、`nosniff`、日志脱敏等） | ✅ 本地 `verify` 全绿、161 项测试；`index.js` / `client.js` 均有变更 |
+| v0.2.0（M2） | 运行时从零供给（hyperframes 0.6.33 + ffmpeg/ffprobe） | ✅ 真实安装成功，`supplied.json` 生成，两个二进制 `-version` 通过（约 840 MB） |
+| v0.2.0（M2） | 渲染任务全链路（脚手架 → 渲染 → 进度 → 产物） | ✅ `render-smoke.mjs`：300/300 帧、`10.000000s`、`1080×1920`、约 13 秒；`renders/index.json` + `exportDir` 副本正确 |
+| v0.2.0（M2） | 取消 / 超时 / 孤儿清理 / 保留策略（假 CLI + 真机进程） | ✅ 单元与集成用例覆盖；取消后无残留进程与 `.tmp` |
+| v0.2.0（M2） | 渲染 UI（运行时状态、安装、项目选择、进度、取消、播放成片） | ✅ 2026-11-19 实机跑通 10s 成片 |
+| v0.2.1 | 入口从 composer 移到左侧栏面板列表、图标改为场记板（去掉红底播放键） | ⏳ 待重启后确认 |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 
 ## 当前能力
 
 - `GET /api/video-workbench/ping?t=<token>`：健康检查，返回媒体目录存在性、是否要求 token、
-  项目功能状态（`projects: ready   unset   invalid`）。
+| 项目功能状态（`projects: ready | unset | invalid`）。 |
 - `GET /api/video-workbench/media?path=<name>&t=<token>`：带 Range 的媒体读取。
 - `GET /api/video-workbench/projects?path=<slug>/<file>&t=<token>`：带 Range 的**项目文件**读取
   （`project.json`、`renders/v1.mp4` 等）；`projectsRoot` 未配置时不挂载。
@@ -55,7 +56,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型、只�
 - `POST /api/video-workbench/render?t=<token>`：发起渲染（body `{ projectId }`，并发 1，队列最多 1）。
 - `GET /api/video-workbench/render/<id>?t=<token>`：轮询进度（`phase`/`percent`/`frames`）。
 - `DELETE /api/video-workbench/render/<id>?t=<token>`：取消渲染并清理进程树。
-- 客户端：composer 左侧 ▶ → 浮层里可「安装运行时 / 选项目 / 渲染 / 取消 / 预览成片」。
+- 客户端：左侧栏面板列表里的「视频工作台」（与「插件」「自动化任务」同一处）→ 主面板页面里可「安装运行时 / 选项目 / 渲染 / 取消 / 预览成片」。
 
 三条文件路由共用同一套实现与同一 token：
 
@@ -71,11 +72,11 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型、只�
 `<projectsRoot>/<slug>/` 下：
 
 ```text
-index.html          # HyperFrames 合成入口（M2 首次渲染时按 project.json 自动生成脚手架）
-project.json        # schemaVersion 1：标题、画幅、fps、样式、分镜（唯一可编辑真相）
-composition/        # 预留：M4 起放可复用的子合成（hyperframes 只把 index.html 当入口）
-assets/             # 素材
-renders/            # 成片（v1.mp4 …）+ index.json（版本、时长、宽高、字节数）
+| index.html | # HyperFrames 合成入口（M2 首次渲染时按 project.json 自动生成脚手架） |
+| project.json | # schemaVersion 1：标题、画幅、fps、样式、分镜（唯一可编辑真相） |
+| composition/ | # 预留：M4 起放可复用的子合成（hyperframes 只把 index.html 当入口） |
+| assets/ | # 素材 |
+| renders/ | # 成片（v1.mp4 …）+ index.json（版本、时长、宽高、字节数） |
 ```
 
 - slug 固定为创建时间的 `YYYYMMDD-HHmmss`，目录名即项目 id，创建后不改；标题存 `project.json`。
@@ -110,8 +111,8 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
     exportDir: D:/Terry/Videos/dsh-video/video-exports
 ```
 
-  配置项   默认   说明  
-  ---   ---   ---  
+| 配置项 | 默认 | 说明 |
+| --- | --- | --- |
   `projectsRoot`   无（必填才能启用项目功能）   所有项目的父目录；未配置时项目路由与项目检查禁用，**不会**默认写 C 盘  
   `exportDir`   无   渲染后另存成片（M2 起生效）；不通过路由暴露  
   `mediaRoot`   `$DSH_HOME/cache/dsh-video-workbench/media`   媒体演示与（M2 起）素材缓存  
@@ -129,8 +130,8 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ## 数据位置
 
-  位置   内容   可删除  
-  ---   ---   ---  
+| 位置 | 内容 | 可删除 |
+| --- | --- | --- |
   `$DSH_HOME/cache/dsh-video-workbench/media`   媒体演示文件（`test.mp4`）   可，媒体探测会提示缺失  
   `$DSH_HOME/cache/dsh-video-workbench/selfcheck.json`   最近一次启动自检结果   可，下次启动重写  
   `<projectsRoot>/<slug>/project.json`   项目唯一可编辑真相   **不可**，备份它  
@@ -152,8 +153,8 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ```powershell
 cd dsh-video-workbench
-node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（161）
-node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
+| node scripts/verify.mjs | # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（161） |
+| node scripts/check-selfcheck.mjs | # 打印最近一次启动自检报告（文件不存在时退出码 1） |
 ```
 
 2026-11-19 已在 DSH Desktop `0.2.2-rc.5` 上完成（完全退出并重新打开 DSH 后实测）：
@@ -184,8 +185,8 @@ node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文
 自动化与 Host 侧已通过：
 
 ```powershell
-node scripts/verify.mjs          # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 161 项测试
-node scripts/render-smoke.mjs    # 真实渲染冒烟：10s / 1080x1920 / 300 帧（需要已安装运行时）
+| node scripts/verify.mjs | # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 161 项测试 |
+| node scripts/render-smoke.mjs | # 真实渲染冒烟：10s / 1080x1920 / 300 帧（需要已安装运行时） |
 node scripts/check-selfcheck.mjs # 启动自检报告（应为 8 项）
 ```
 
@@ -193,7 +194,7 @@ node scripts/check-selfcheck.mjs # 启动自检报告（应为 8 项）
   （约 840 MB），`supplied.json` 记录二进制路径，两个二进制 `-version` 校验通过。
 - **渲染**：`render-smoke.mjs` 通过任务管理器跑完 `300/300` 帧，产物 `10.000000s · 1080×1920`，
   约 13 秒（draft / 2 workers）；`renders/index.json` 记录时长、宽高、字节数；`exportDir` 生成副本。
-- 剩余（需**完全退出并重开 DSH**）：浮层里的「安装运行时 / 渲染 / 取消 / 播放成片」按钮与进度条。
+- 剩余（需**完全退出并重开 DSH**）：v0.2.1 的侧栏入口与面板页面（入口位置与图标刚调整）。
 
 ## 兼容性
 
@@ -212,14 +213,14 @@ node scripts/check-selfcheck.mjs # 启动自检报告（应为 8 项）
 - 合成脚手架是纯 CSS + 最小 timeline 契约对象：可渲染、可 seek，但样式朴素；M3/M4 会替换成真正的
   HyperFrames 模板（agent 可整份重写 `index.html`）。
 - 渲染并发 1（排队 1 个）；10 秒 draft 片约 13 秒，standard/high 更慢。
-- 浮层是全屏模态；界面文案暂为中文硬编码；macOS 未适配。
+- 工作台是主面板页面（不占 composer、不做全屏浮层）；界面文案暂为中文硬编码；macOS 未适配。
 
 ## 开发
 
 ```sh
-node scripts/build.mjs        # src/ → 根目录 index.js / client.js
-node scripts/verify.mjs       # 一条命令跑完全部检查
-node --test                   # 只跑测试（161 项）
+| node scripts/build.mjs | # src/ → 根目录 index.js / client.js |
+| node scripts/verify.mjs | # 一条命令跑完全部检查 |
+| node --test | # 只跑测试（161 项） |
 node scripts/render-smoke.mjs # 真实渲染冒烟（需要运行时）
 ```
 

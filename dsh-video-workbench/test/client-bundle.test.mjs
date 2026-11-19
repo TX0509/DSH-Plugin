@@ -133,12 +133,13 @@ test('client bundle: apply installs the stylesheet and both slots', () => {
     ['video-workbench:styles'],
   )
   assert.equal(bundle.styles.length, 1)
-  assert.match(bundle.styles[0].textContent, /dshvw-trigger/u)
-  assert.deepEqual(bundle.injected, ['conversation.input.left', 'shell.overlay'])
-  assert.deepEqual(
-    bundle.registrations.map((entry) => entry.options.id),
-    ['video-workbench-trigger', 'video-workbench-panel'],
-  )
+  assert.match(bundle.styles[0].textContent, /dshvw-page/u)
+  // The workbench is a main panel reached from the sidebar panel list, like the
+  // Plugins page: no composer button and no page-wide overlay.
+  assert.deepEqual(bundle.injected, ['sidebar.panellist', 'main'])
+  assert.equal(bundle.registrations[0].options.id, 'video-workbench')
+  assert.equal(typeof bundle.registrations[0].options.label, 'function')
+  assert.equal(bundle.registrations[1].options.key, 'video-workbench')
   for (const registration of bundle.registrations) {
     assert.equal(typeof registration.component, 'function')
   }

@@ -98,7 +98,7 @@ M0 不需要配置。M1 增加项目能力后，需要给 profile 的 `cordis.pa
 渲染需要 hyperframes + ffmpeg/ffprobe，安装在 `runtimeDir`（默认
 `$DSH_HOME/cache/dsh-video-workbench/runtime`，约 840 MB）。两种方式：
 
-1. **应用内**：完全重启 DSH 后打开 composer 左侧 ▶，运行时显示「未安装」时点「安装运行时」，
+1. **应用内**：完全重启 DSH 后打开左侧栏的「视频工作台」面板，运行时显示「未安装」时点「安装运行时」，
    等状态变成「已就绪」（首次 2–10 分钟，取决于网络）。
 2. **命令行冒烟**（同时也验证渲染链路）：
 
@@ -120,7 +120,7 @@ node scripts/install.mjs --check
 
 启动 DSH 后：
 
-1. composer 左侧出现 ▶ 按钮，点开能看到播放器与诊断信息；
+1. 左侧栏面板列表出现「视频工作台」（场记板图标），点开是工作台页面；
 2. 等约 3 秒，读取启动自检报告：
 
    ```powershell
@@ -160,14 +160,14 @@ node scripts/install.mjs --uninstall --profile desktop
 - `$DSH_HOME\cache\dsh-video-workbench\`（运行时、媒体缓存与 `selfcheck.json`）
 - 你的项目目录（`projectsRoot`）
 
-卸载后重新打开 DSH，确认侧栏与 composer 不再出现插件入口。
+卸载后重新打开 DSH，确认左侧栏不再出现「视频工作台」入口。
 
 ## 常见问题
 
 | 现象 | 原因与处理 |
 | --- | --- |
 | 插件列表里看不到 | `engines.dsh` 与当前版本不匹配；按升级手册复测后放宽范围 |
-| composer 没有 ▶ 按钮 | 客户端模块图只在启动时合成；完全退出后重开 |
+| 左侧栏没有「视频工作台」 | 客户端模块图只在启动时合成；完全退出后重开 |
 | 播放器提示“未获取到访问令牌” | 页面启动时未拿到注入的 token；完全退出后重开 |
 | 播放返回 401 | 同上；token 每个进程重新生成，旧页面会失效 |
 | 播放返回 404 | `mediaRoot` 下没有该文件；默认在 `$DSH_HOME\cache\dsh-video-workbench\media` |

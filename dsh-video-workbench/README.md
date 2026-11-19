@@ -4,7 +4,7 @@ DSH Desktop 的短视频制作工作台插件。当前处于 **M1（骨架与播
 TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只读项目路由、`video_selfcheck` 已就位；
 渲染与素材/配音在 M2–M3。
 
-> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、82 项测试）；
+> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、86 项测试）；
 > 2026-11-19 在 DSH Desktop `0.2.2-rc.5` 上**完全重启后的实机验收全部通过**（Host 自检 5/5 +
 > 客户端 ▶/token/206/播放拖动/Esc/重试，单次模块注册生效）。下一阶段见 `PLAN.md` M2。
 
@@ -23,7 +23,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.0.2 | Esc 关闭 / 焦点归还 | ✅ 关闭后焦点回到 ▶ 按钮 |
 | v0.0.3 | 重启后复测 | ✅ `ping` 不再返回 `node`；token、206、播放至 1.56s 均通过 |
 | v0.0.4 | 重启后全链路复测 | ✅ token、206、播放、拖动 seek、错误态与"重试"、视频聚焦时 Esc 关闭 全部通过 |
-| v0.1.0（M1） | 类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 82 项测试 | ✅ `node scripts/verify.mjs` 全绿（需产物已提交） |
+| v0.1.0（M1） | 类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 86 项测试 | ✅ `node scripts/verify.mjs` 全绿（需产物已提交） |
 | v0.1.0（M1） | 运行中的 Desktop 热重载 Host 后启动自检 | ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 升级到 rc.5 后重新安装 + 启动自检 | ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200 |
@@ -124,7 +124,7 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ```powershell
 cd dsh-video-workbench
-node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（82）
+node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（86）
 node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
 ```
 
@@ -143,7 +143,9 @@ node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文
 
 ## 兼容性
 
-- DSH：`0.2.2-rc.5`（精确匹配，升级后插件会停用等待复测，见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)）
+- DSH：`>=0.2.2-rc.3 <0.2.3`（实测 `0.2.2-rc.3` 与 `0.2.2-rc.5` 全链路通过；
+  DSH 判定预发布也参与范围匹配，所以 `0.2.3-rc.*` 会放行，`0.2.3` 正式版及以后需复测，
+  见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)）
 - 平台：Windows Desktop；Web 与 macOS 未验证
 - 运行时（M2 起）：需要可用的 Chrome；本机实测**优先复用系统 Chrome**，自动下载不可用
 - Node：`>=20`；实测使用 DSH 托管运行时 `v24.21.0`
@@ -160,7 +162,7 @@ node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文
 ```sh
 node scripts/build.mjs     # src/ → 根目录 index.js / client.js
 node scripts/verify.mjs    # 一条命令跑完全部检查
-node --test                # 只跑测试（82 项）
+node --test                # 只跑测试（86 项）
 ```
 
 ## 未完成

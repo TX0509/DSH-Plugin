@@ -4,8 +4,10 @@
 
 ## 前置检查
 
-1. `package.json` 的 `engines.dsh` 必须覆盖你当前的 DSH 版本（当前固定为 `0.2.2-rc.5`）。
-   DSH 升级后插件会**拒绝激活**，这是有意的保护，见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)。
+1. `package.json` 的 `engines.dsh` 必须覆盖你当前的 DSH 版本（当前为 `>=0.2.2-rc.3 <0.2.3`，
+   实测 `0.2.2-rc.3` 与 `0.2.2-rc.5`）。超出范围时插件会**拒绝激活**，这是有意的保护，
+   见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)；用插件管理器查看该包的 `error` 字段
+   可以直接看到是哪一侧版本不满足。
 2. Desktop 的 profile 由 Electron 应用独占管理，`dsh plugin --profile desktop ...` 会被拒绝。
 3. 安装或更新前，**完全退出 DSH（包括托盘图标）**；否则应用退出时可能回写 profile，覆盖安装结果。
 

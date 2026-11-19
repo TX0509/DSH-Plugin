@@ -24,7 +24,7 @@ cd D:\Terry\Code\DSH-Plugin\dsh-video-workbench
 # 构建（源码 src/ → 根目录 index.js / client.js）
 node scripts/build.mjs
 
-# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（82 项）
+# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（86 项）
 node scripts/verify.mjs
 
 # 只跑测试
@@ -61,7 +61,7 @@ dsh-video-workbench/
 ├── src/shared/                  # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js         # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
-├── test/{range,media,guard,projects,selfcheck,client-bundle,install}.test.mjs   # 82 项
+├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest}.test.mjs   # 86 项
 ├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
@@ -111,6 +111,11 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
     约 3 秒，启动自检自动重跑；再追加一行注释又重跑一次）。Host 改动/配置不用重启就生效，
     但**客户端 bundle 仍只在启动时合成**，所以客户端验收必须完全重启。
     热重载会重新生成 token，旧页面要刷新或重启后才拿到新 token。
+14. **`engines.dsh` 用 `semver.satisfies(runtime, range, { includePrerelease: true })` 判定**
+    （`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`），即**预发布版本参与范围匹配**：
+    `>=0.2.2-rc.3 <0.2.3` 会放行 `0.2.3-rc.*`、挡住 `0.2.3` 正式版。要连预发布一起挡住得写
+    `<0.2.3-0`，但那样 nightly 每次预发布升级都会停用插件。改范围前用该函数实测，别凭直觉；
+    `test/manifest.test.mjs` 会锁定当前范围。
 
 ## 5. 已确认的决定
 
@@ -121,6 +126,7 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 | 导出目录 | `exportDir` 可选，`D:\Terry\Videos\dsh-video\video-exports`；媒体/项目路由都不暴露 |
 | slug | 时间戳 `YYYYMMDD-HHmmss`，目录创建后不可变；标题存 `project.json` |
 | 自检报告 | `dataDir/selfcheck.json`，`dataDir` 默认 `$DSH_HOME/cache/dsh-video-workbench` |
+| `engines.dsh` | `>=0.2.2-rc.3 <0.2.3`（只覆盖实测过的 `0.2.2` 这条线；`0.2.3` 正式版留作复测检查点，详见 §4 第 14 条与 [COMPAT](COMPAT.md)） |
 | 运行时缓存 | 留默认位置（约 1.8 GB 在 C 盘），M2 不迁移 |
 | 生图 / TTS | 火山方舟 Seedream / 火山 TTS + 本地 Kokoro 兜底（M3 实现） |
 
@@ -141,7 +147,7 @@ M1 五个步骤全部完成（提交见 `git log --oneline`）：
 | 4 | `feat: 增加 video_selfcheck` | 5 项检查、`/selfcheck` 路由、`getOrigin()` |
 | 5 | `docs: 更新 M1 验收记录` | README/INSTALL/COMPAT/HANDOFF/M1-PLAN、版本 0.1.0、启动自检报告 |
 
-自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、82 项测试）。
+自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、86 项测试）。
 
 ### 2026-11-19 数据完整性修复（M1 之后、客户端重启验收之前）
 
@@ -156,8 +162,8 @@ v0.1.0 接入客户端时出现 DSH 客户端数据损坏（已由用户修复�
 | 写 `project.json` 失败会留下空项目目录；`writeProject` 不建子目录 | 抽 `createProjectLayout` / `persistProject`，失败只清理本次新建的目录 | `writeProject` 布局与根目录守卫用例 |
 | `install.mjs` 直写 profile `package.json`，可能被截断 | 临时文件 + `rename` 原子写；卸载也读回校验 | `test/install.test.mjs`（临时 `DSH_HOME`：`--check`/`--dry-run`/安装/卸载/路径逃逸） |
 
-测试从 65 项增至 82 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
-项目写入失败路径等用例）。
+测试从 65 项增至 86 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
+项目写入失败路径、manifest 元数据等用例）。
 
 Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发热重载，插件自动跑启动自检）：
 

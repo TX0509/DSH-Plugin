@@ -34,7 +34,7 @@ DSH 升级后，版本不满足会导致插件**拒绝激活**——这是有意
 | 6 | 播放 | 视频能播；聚焦视频后按 Esc 仍能关闭 |
 | 7 | 渲染（M2 起） | 跑一次 3 秒样例渲染，产物可播放 |
 | 8 | 进程（M2 起） | 取消渲染后无 `chrome-headless-shell` 残留 |
-| 9 | 单元测试 | `node --test` 全绿（当前 82 项） |
+| 9 | 单元测试 | `node --test` 全绿（当前 86 项） |
 | 10 | 卸载 | 卸载后 DSH 正常启动、无 patch 行残留 |
 
 ### 第 1 项的命令
@@ -82,9 +82,37 @@ DSH 耦合代码集中在两层适配器；升级时优先只改那一层（`ver
 ## 5. 放宽版本范围
 
 1. 第 2 节各项全过；
-2. 把 `engines.dsh` 从精确版本改成实测范围，例如 `>=0.2.2-rc.3 <0.3.0`；
+2. 把 `engines.dsh` 从精确版本改成实测范围：只覆盖**真正测过**的版本线，不要一次放宽一个 minor；
 3. 写入 [COMPAT.md](COMPAT.md)，并在 README 的兼容性矩阵更新；
-4. 再跑一次 `node --test`。
+4. 再跑一次 `node --test`（`test/manifest.test.mjs` 会锁定当前范围，改范围需同步改测试与文档）。
+
+### 已执行的放宽（2026-11-19）
+
+```json
+"dsh": ">=0.2.2-rc.3 <0.2.3"
+```
+
+依据：`0.2.2-rc.3`（M1 全链路）与 `0.2.2-rc.5`（升级后全链路）都实测通过，两者同属
+`0.2.2` 这条 patch 线；把范围锁定在这一条线上即可避免"nightly 每次升一个小版本就被停用"
+（本次 rc.3 → rc.5 就是这样的停用），同时把 `0.2.3` 正式版留作复测检查点。
+
+**判定语义（实测，别凭直觉）**：DSH 用
+`semver.satisfies(runtime, range, { includePrerelease: true })` 判定
+（`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`），
+**预发布版本参与范围匹配**。因此 `>=0.2.2-rc.3 <0.2.3` 的实际放行集合是：
+
+| 放行 | 拒绝 |
+| --- | --- |
+| `0.2.2-rc.3`…`0.2.2-rc.*`、`0.2.2`、`0.2.3-rc.*` | `< 0.2.2-rc.3`、`0.2.3`、`0.3.x` |
+
+要连 `0.2.3-rc.*` 也挡住，得写 `<0.2.3-0`；但那样 nightly 每次预发布升级又会停用一次，
+不划算。改范围前用下面的脚本复核（用 DSH 自带的判定函数，不要装额外 semver）：
+
+```powershell
+# 用 DSH 运行时（Electron）执行，路径按当前安装调整
+$env:ELECTRON_RUN_AS_NODE = '1'
+& $env:DSH_NODE_EXECUTABLE -e "import('file:///D:/DSH/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js').then(m => console.log(m.evaluatePluginCompatibility({ name: 'dsh-video-workbench', version: '0.1.0', engines: { dsh: '>=0.2.2-rc.3 <0.2.3' } }, {}, '0.2.2-rc.5')))"
+```
 
 ## 6. 回滚
 

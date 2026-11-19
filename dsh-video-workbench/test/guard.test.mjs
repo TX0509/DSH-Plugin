@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -6,6 +7,9 @@ import test from 'node:test'
 import {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_LIST_PATH,
+  PROJECTS_PATH,
+  RENDER_PATH,
   RUNTIME_INSTALL_PATH,
   RUNTIME_PATH,
   SELFCHECK_PATH,
@@ -106,7 +110,7 @@ test('apply registers every route and the index injector', () => {
 
   assert.deepEqual(
     stub.routes.map((route) => [route.kind, route.path]).sort(),
-    [['exact', PING_PATH], ['exact', SELFCHECK_PATH], ['exact', RUNTIME_PATH], ['exact', RUNTIME_INSTALL_PATH], ['prefix', MEDIA_PATH]].sort(),
+    [['exact', PING_PATH], ['exact', SELFCHECK_PATH], ['exact', RUNTIME_PATH], ['exact', RUNTIME_INSTALL_PATH], ['exact', PROJECTS_LIST_PATH], ['prefix', MEDIA_PATH]].sort(),
   )
   assert.deepEqual(stub.listeners.map((entry) => entry.name), ['webserver/index-inject'])
   assert.equal(stub.messages.some((message) => message.includes('filesystem root')), false)
@@ -126,7 +130,7 @@ test('apply falls back to a safe root when mediaRoot is a filesystem root', () =
   const stub = stubContext()
   apply(stub.ctx, { mediaRoot: path.parse(process.cwd()).root, selfcheckOnStartup: false })
 
-  assert.equal(stub.routes.length, 5)
+  assert.equal(stub.routes.length, 6)
   const message = stub.messages.find((entry) => entry.includes('filesystem root'))
   assert.ok(message, 'expected a filesystem-root error log')
   // Logs are redacted: the configured and fallback paths appear shortened, and
@@ -149,4 +153,33 @@ test('apply falls back to the default data dir when dataDir is a filesystem root
   const dataDirLog = stub.messages.find((entry) => entry.includes('data dir:'))
   assert.ok(dataDirLog, 'expected a data-dir log line')
   assert.ok(dataDirLog.includes('~') || dataDirLog.includes('…'), 'expected a redacted path')
+})
+
+test('apply mounts every route declared in shared/routes', () => {
+  const projectsRoot = mkdtempSync(path.join(os.tmpdir(), 'dshvw-routes-'))
+  const stub = stubContext()
+  apply(stub.ctx, {
+    mediaRoot: path.join(process.cwd(), 'media'),
+    projectsRoot,
+    selfcheckOnStartup: false,
+  })
+  try {
+    const registered = new Set(stub.routes.map((route) => route.path))
+    // Keep this list in sync with shared/routes.ts: a declared route that is not
+    // mounted silently 404s (this is how /projects-list was missed once).
+    for (const routePath of [
+      PING_PATH,
+      MEDIA_PATH,
+      PROJECTS_PATH,
+      PROJECTS_LIST_PATH,
+      SELFCHECK_PATH,
+      RUNTIME_PATH,
+      RUNTIME_INSTALL_PATH,
+      RENDER_PATH,
+    ]) {
+      assert.equal(registered.has(routePath), true, `route not mounted: ${routePath}`)
+    }
+  } finally {
+    rmSync(projectsRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }
 })

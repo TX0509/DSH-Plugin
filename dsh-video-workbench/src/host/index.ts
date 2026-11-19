@@ -703,6 +703,14 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
       }, 'video-workbench:projects')
     }
 
+    // The render UI needs the newest-first project list; the route is always
+    // mounted so the page can explain why the project feature is off.
+    server.registerRoute({
+      kind: 'exact',
+      path: PROJECTS_LIST_PATH,
+      handler: createProjectsListHandler({ token, requireToken, projects }),
+    }, 'video-workbench:projects-list')
+
     // The checks inside need `getOrigin()`, which only answers after the
     // listener binds, so it is resolved per request.
     server.registerRoute({

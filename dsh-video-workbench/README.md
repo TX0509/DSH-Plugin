@@ -5,7 +5,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型、只�
 渲染运行时供给、渲染任务（进度/取消/超时）、成片保留与导出、浮层内渲染 UI 已就位；
 素材与配音在 M3。
 
-> **M2 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、158 项测试）；
+> **M2 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、160 项测试）；
 > 实机渲染冒烟通过：`node scripts/render-smoke.mjs` → **10.000s / 1080×1920 / 300 帧**，约 13 秒完成，
 > `renders/index.json` 与 `exportDir` 副本均生成。客户端 UI 需完全重启 DSH 后验证（见「M2 验收」）。
 
@@ -30,7 +30,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型、只�
   v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5`   升级到 rc.5 后重新安装 + 启动自检   ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200  
   v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5`   桌面端完全重启后的客户端验收   ✅ 全部通过：单个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、视频聚焦时 Esc、错误态重试；亮/暗、侧栏展开/收起、窄窗口正常；无重复浮层、无 `slot entry crashed`  
   v0.1.1   `engines.dsh` 改为 `>=0.2.2-rc.5`（自用、不设上限）+ manifest 契约测试   ✅ 产物与 0.1.0 逐字节相同（`verify` 的 artifact 校验通过），`verify` 全绿；用 DSH 自带判定函数复核：rc.5 及以后全部放行、rc.4 及更早拒绝；运行中的插件未受影响  
-  v0.1.2   回归审查后的修复批次（Range 语义、场景 id 唯一性、写盘与自检加固、`nosniff`、日志脱敏等）   ✅ 本地 `verify` 全绿、158 项测试；`index.js` / `client.js` 均有变更  
+  v0.1.2   回归审查后的修复批次（Range 语义、场景 id 唯一性、写盘与自检加固、`nosniff`、日志脱敏等）   ✅ 本地 `verify` 全绿、160 项测试；`index.js` / `client.js` 均有变更  
   v0.2.0（M2）   运行时从零供给（hyperframes 0.6.33 + ffmpeg/ffprobe）   ✅ 真实安装成功，`supplied.json` 生成，两个二进制 `-version` 通过（约 840 MB）  
   v0.2.0（M2）   渲染任务全链路（脚手架 → 渲染 → 进度 → 产物）   ✅ `render-smoke.mjs`：300/300 帧、`10.000000s`、`1080×1920`、约 13 秒；`renders/index.json` + `exportDir` 副本正确  
   v0.2.0（M2）   取消 / 超时 / 孤儿清理 / 保留策略（假 CLI + 真机进程）   ✅ 单元与集成用例覆盖；取消后无残留进程与 `.tmp`  
@@ -152,7 +152,7 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ```powershell
 cd dsh-video-workbench
-node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（158）
+node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（160）
 node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
 ```
 
@@ -184,7 +184,7 @@ node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文
 自动化与 Host 侧已通过：
 
 ```powershell
-node scripts/verify.mjs          # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 158 项测试
+node scripts/verify.mjs          # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 160 项测试
 node scripts/render-smoke.mjs    # 真实渲染冒烟：10s / 1080x1920 / 300 帧（需要已安装运行时）
 node scripts/check-selfcheck.mjs # 启动自检报告（应为 8 项）
 ```
@@ -219,7 +219,7 @@ node scripts/check-selfcheck.mjs # 启动自检报告（应为 8 项）
 ```sh
 node scripts/build.mjs        # src/ → 根目录 index.js / client.js
 node scripts/verify.mjs       # 一条命令跑完全部检查
-node --test                   # 只跑测试（158 项）
+node --test                   # 只跑测试（160 项）
 node scripts/render-smoke.mjs # 真实渲染冒烟（需要运行时）
 ```
 

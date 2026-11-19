@@ -346,97 +346,9 @@ function dedupe(candidates) {
   return unique;
 }
 
-// src/host/render/routes.ts
-var START_ERROR_STATUS = {
-  busy: 409,
-  "invalid-project": 400,
-  disposed: 503
-};
-var CANCEL_ERROR_STATUS = {
-  "not-found": 404,
-  finished: 409
-};
-function authorized(request2, options) {
-  return tokenEquals(readToken(request2), options.token);
-}
-function readJsonBody(request2, limit) {
-  return new Promise((resolve) => {
-    let size = 0;
-    const chunks = [];
-    request2.on("data", (chunk) => {
-      size += chunk.length;
-      if (size > limit) {
-        resolve(void 0);
-        request2.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    request2.on("end", () => {
-      try {
-        const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        resolve(typeof value === "object" && value !== null ? value : void 0);
-      } catch {
-        resolve(void 0);
-      }
-    });
-    request2.on("error", () => resolve(void 0));
-  });
-}
-function createRenderHandler(options) {
-  const limit = options.maxBodyBytes ?? 16 * 1024;
-  return (request2, response) => {
-    const url = new URL(request2.url ?? "/", "http://placeholder.invalid");
-    const suffix = url.pathname.slice(RENDER_PATH.length).replace(/^\/+/u, "");
-    if (suffix === "") {
-      if (rejectRequest(request2, response, {
-        requireToken: options.requireToken,
-        tokenMatches: authorized(request2, options),
-        allow: ["POST"]
-      })) return;
-      void readJsonBody(request2, limit).then((body) => {
-        const projectId = typeof body?.projectId === "string" ? body.projectId : "";
-        if (projectId === "") {
-          sendJson(response, 400, { error: "invalid-request" });
-          return;
-        }
-        const result = options.start(projectId);
-        if (!result.ok) {
-          sendJson(response, START_ERROR_STATUS[result.error] ?? 400, { error: result.error });
-          return;
-        }
-        sendJson(response, 202, { job: result.job });
-      });
-      return;
-    }
-    if (rejectRequest(request2, response, {
-      requireToken: options.requireToken,
-      tokenMatches: authorized(request2, options),
-      allow: ["GET", "HEAD", "DELETE"]
-    })) return;
-    if (request2.method === "DELETE") {
-      const result = options.cancel(suffix);
-      if (!result.ok) {
-        sendJson(response, CANCEL_ERROR_STATUS[result.error] ?? 400, { error: result.error });
-        return;
-      }
-      sendJson(response, 202, { job: result.job });
-      return;
-    }
-    const job = options.get(suffix);
-    if (job === void 0) {
-      sendJson(response, 404, { error: "not-found" });
-      return;
-    }
-    sendJson(response, 200, { job });
-  };
-}
-
-// src/host/render/jobs.ts
-import { spawn as spawn3 } from "node:child_process";
-import { randomBytes as randomBytes2 } from "node:crypto";
-import fs7 from "node:fs";
-import path12 from "node:path";
+// src/host/projects/store.ts
+import fs4 from "node:fs";
+import path7 from "node:path";
 
 // src/host/atomic.ts
 import { randomBytes } from "node:crypto";
@@ -458,10 +370,6 @@ function writeFileAtomic(target, text) {
     throw error;
   }
 }
-
-// src/host/projects/store.ts
-import fs4 from "node:fs";
-import path7 from "node:path";
 
 // src/host/projects/schema.ts
 var SCHEMA_VERSION = 1;
@@ -889,6 +797,120 @@ function listProjects(root) {
   projects.sort((left, right) => compareNewestFirst(left.id, right.id));
   return { projects, invalid };
 }
+
+// src/host/projects/routes.ts
+function createProjectsListHandler(options) {
+  return (request2, response) => {
+    if (rejectRequest(request2, response, {
+      requireToken: options.requireToken,
+      tokenMatches: tokenEquals(readToken(request2), options.token),
+      allow: ["GET", "HEAD"]
+    })) return;
+    const { projects } = options;
+    if (projects.state !== "ready" || projects.root === void 0) {
+      sendJson(response, 200, { state: projects.state, projects: [], invalid: [] });
+      return;
+    }
+    const listed = listProjects(projects.root);
+    sendJson(response, 200, {
+      state: "ready",
+      projects: listed.projects,
+      invalid: listed.invalid.map((entry) => ({ id: entry.id, errors: entry.errors.slice(0, 5) }))
+    });
+  };
+}
+
+// src/host/render/routes.ts
+var START_ERROR_STATUS = {
+  busy: 409,
+  "invalid-project": 400,
+  disposed: 503
+};
+var CANCEL_ERROR_STATUS = {
+  "not-found": 404,
+  finished: 409
+};
+function authorized(request2, options) {
+  return tokenEquals(readToken(request2), options.token);
+}
+function readJsonBody(request2, limit) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    request2.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        resolve(void 0);
+        request2.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request2.on("end", () => {
+      try {
+        const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        resolve(typeof value === "object" && value !== null ? value : void 0);
+      } catch {
+        resolve(void 0);
+      }
+    });
+    request2.on("error", () => resolve(void 0));
+  });
+}
+function createRenderHandler(options) {
+  const limit = options.maxBodyBytes ?? 16 * 1024;
+  return (request2, response) => {
+    const url = new URL(request2.url ?? "/", "http://placeholder.invalid");
+    const suffix = url.pathname.slice(RENDER_PATH.length).replace(/^\/+/u, "");
+    if (suffix === "") {
+      if (rejectRequest(request2, response, {
+        requireToken: options.requireToken,
+        tokenMatches: authorized(request2, options),
+        allow: ["POST"]
+      })) return;
+      void readJsonBody(request2, limit).then((body) => {
+        const projectId = typeof body?.projectId === "string" ? body.projectId : "";
+        if (projectId === "") {
+          sendJson(response, 400, { error: "invalid-request" });
+          return;
+        }
+        const result = options.start(projectId);
+        if (!result.ok) {
+          sendJson(response, START_ERROR_STATUS[result.error] ?? 400, { error: result.error });
+          return;
+        }
+        sendJson(response, 202, { job: result.job });
+      });
+      return;
+    }
+    if (rejectRequest(request2, response, {
+      requireToken: options.requireToken,
+      tokenMatches: authorized(request2, options),
+      allow: ["GET", "HEAD", "DELETE"]
+    })) return;
+    if (request2.method === "DELETE") {
+      const result = options.cancel(suffix);
+      if (!result.ok) {
+        sendJson(response, CANCEL_ERROR_STATUS[result.error] ?? 400, { error: result.error });
+        return;
+      }
+      sendJson(response, 202, { job: result.job });
+      return;
+    }
+    const job = options.get(suffix);
+    if (job === void 0) {
+      sendJson(response, 404, { error: "not-found" });
+      return;
+    }
+    sendJson(response, 200, { job });
+  };
+}
+
+// src/host/render/jobs.ts
+import { spawn as spawn3 } from "node:child_process";
+import { randomBytes as randomBytes2 } from "node:crypto";
+import fs7 from "node:fs";
+import path12 from "node:path";
 
 // src/host/render/progress.ts
 var PHASE_FLOOR = {
@@ -2694,6 +2716,11 @@ function apply(ctx, config = {}) {
         handler: createFileHandler({ root: projects.root, token, requireToken })
       }, "video-workbench:projects");
     }
+    server.registerRoute({
+      kind: "exact",
+      path: PROJECTS_LIST_PATH,
+      handler: createProjectsListHandler({ token, requireToken, projects })
+    }, "video-workbench:projects-list");
     server.registerRoute({
       kind: "exact",
       path: SELFCHECK_PATH,

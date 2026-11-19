@@ -16,6 +16,7 @@ import test from 'node:test'
 
 import {
   PING_PATH,
+  PROJECTS_LIST_PATH,
   PROJECTS_PATH,
   apply,
   createProject,
@@ -147,8 +148,14 @@ async function withPlugin(run) {
   writeFileSync(path.join(projectsRoot, project.id, 'renders', 'v1.mp4'), Buffer.alloc(200, 7))
 
   const server = createServer((request, response) => {
-    const target = request.url ?? '/'
-    const route = stub.routes.find((entry) => target.startsWith(entry.path))
+    // Mirror the real web server's match order: exact, then longest prefix.
+    // (`startsWith` alone would route /projects-list into the /projects prefix.)
+    const pathname = new URL(request.url ?? '/', 'http://placeholder.invalid').pathname
+    const exact = stub.routes.filter((entry) => entry.kind === 'exact' && entry.path === pathname)
+    const prefixes = stub.routes
+      .filter((entry) => entry.kind === 'prefix' && pathname.startsWith(entry.path))
+      .sort((left, right) => right.path.length - left.path.length)
+    const route = exact[0] ?? prefixes[0]
     if (route === undefined) {
       response.writeHead(404)
       response.end()
@@ -546,4 +553,16 @@ test('apply: projects route is absent until projectsRoot is configured', async (
   } finally {
     removeRoots(mediaRoot)
   }
+})
+
+test('projects-list route: 401 without token, newest-first list with token', async () => {
+  await withPlugin(async ({ origin, token, project }) => {
+    assert.equal((await call(origin, PROJECTS_LIST_PATH)).status, 401)
+    const response = await call(origin, `${PROJECTS_LIST_PATH}?t=${token}`)
+    assert.equal(response.status, 200)
+    const body = JSON.parse(response.body.toString())
+    assert.equal(body.state, 'ready')
+    assert.deepEqual(body.projects.map((entry) => entry.id), [project.id])
+    assert.deepEqual(body.invalid, [])
+  })
 })

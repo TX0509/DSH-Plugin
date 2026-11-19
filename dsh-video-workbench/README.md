@@ -226,6 +226,6 @@ node scripts/render-smoke.mjs # 真实渲染冒烟（需要运行时）
 
 ## 未完成
 
-M3（素材与配音）、M4（Agent 工具主路径）、M5（微调工作台）、M6（交付打磨）见 [PLAN.md](PLAN.md)；
+M3 的执行计划见 [docs/M3-PLAN.md](docs/M3-PLAN.md)；M4（Agent 工具主路径）、M5（微调工作台）、M6（交付打磨）见 [PLAN.md](PLAN.md)；
 M2 的执行细节与被推翻的假设见 [docs/M2-PLAN.md](docs/M2-PLAN.md)；
 下一个人/下一个会话请先读 [docs/HANDOFF.md](docs/HANDOFF.md)。

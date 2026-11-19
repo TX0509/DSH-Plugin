@@ -62,7 +62,7 @@ $DSH_HOME/cache/dsh-video-workbench/
 | **M0 隔离与链路验证** | ① `api/...` 路由 + `<video ` 拖拽（206）；② 托管 Node 探测链 + 本地 hyperframes 安装/运行 + 缓存目录 + **子进程 env 清理**；③ 取消/退出无 Chrome 残留；④ overlay 窗口区域声明（读 `v0.2.2-rc.1/window-drag-regions`）；⑤ `docs/UPGRADE-PLAYBOOK.md` | 2 | 四条链路全绿；安装耗时可接受（≤15 分钟）；playbook 有可执行步骤 |
 | **M1 骨架与播放** | TS/esbuild 脚手架、包结构、`adapters/` 层、`projectsRoot` + `project.json`、媒体路由（Range + 路径校验）、overlay + 播放器、composer 入口、`video_selfcheck` 骨架、构建可复现校验——**执行细节见 [docs/M1-PLAN.md](docs/M1-PLAN.md)** | 3 | 手工 mp4 能播能拖、亮暗正常、Esc 焦点归位；`build` 后产物与提交一致 |
 | **M2 渲染管线** ✅ | 运行时供给与首次安装、渲染任务/进度/取消/超时、进程树清理、原子写入、保留策略（最近 5 个 render）——执行细节与实测修正见 [docs/M2-PLAN.md](docs/M2-PLAN.md) | 5 | ✅ 运行时从零安装；真实渲染 10.000s/1080×1920/300 帧；取消无残留；保留策略生效（浮层 UI 待重启确认） |
-| **M3 素材与配音** | Pixabay、Seedream 生图、火山 TTS（含 word timings）+ Kokoro 兜底、失败降级（无声也可出片）、素材缓存与署名、scenes → composition 脚手架 | 5 | 3 图 + 1 配音进片并渲染成功；无 key 时 Kokoro 出片；TTS 全失败时出无声片 |
+| **M3 素材与配音** | Pixabay、Seedream 生图、火山 TTS（含 word timings）+ Kokoro 兜底、失败降级（无声也可出片）、素材缓存与署名、scenes → composition 脚手架——**执行细节见 [docs/M3-PLAN.md](docs/M3-PLAN.md)** | 5（实际估 6.5–7） | 3 图 + 1 配音进片并渲染成功；无 key 时 Kokoro 出片；TTS 全失败时出无声片 |
 | **M4 Agent 主路径** | 9 个工具、结果卡、合成模板、`hyperframes lint` 门禁与失败修复回路、错误分类回传 | 6 | 固定 prompt 回归集 ≥2/3 出片；lint 不过不进入渲染 |
 | **M5 微调工作台** | 白名单 8 字段、分镜列表、属性面板、素材替换、预览 seek、重渲染、键盘与焦点 | 6 | 改文案后重渲染成功且 project.json 不被破坏；Tab/Esc 完整 |
 | **M6 交付打磨** | 隔离审计、`node --test`、截图、README/INSTALL、卸载脚本、`COMPAT.md` | 3 | 通过隔离验收与兼容矩阵；卸载后 DSH 正常启动、项目文件保留 |

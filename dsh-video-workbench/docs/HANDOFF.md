@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，**M2 已完成**（版本 `0.2.1`：渲染链路真机通过；入口改为左侧栏面板，待重启确认）；下一步 M3。
+> 最后更新：2026-11-19，**M2 已完成**（版本 `0.2.1`）；**M3 执行计划已写好**（[M3-PLAN.md](M3-PLAN.md)），待开工。
 
 ## 1. 这是什么
 
@@ -257,8 +257,8 @@ console.table(r.checks); r.ok
 **剩余一步（需要人做）**：v0.2.1 侧栏入口的实机确认 —— 完全退出并重开 DSH 后，左侧栏面板列表应出现「视频工作台」（场记板图标），
 点开是主面板页面（安装运行时 / 选项目 / 渲染 / 取消 / 播放成片，进度 5%→100%）。截图补进 `docs/`。
 
-M3 素材与配音开工前：读 [PLAN.md](../PLAN.md) 的 M3 一行 + [M0-FINDINGS.md](M0-FINDINGS.md)
-的环境变量结论；合成脚手架在 `src/host/render/scaffold.ts`，M3/M4 会把它换成真正的 HyperFrames 模板
+M3 素材与配音：**执行计划已写好** —— [M3-PLAN.md](M3-PLAN.md)（步骤 0–7、provider 接口、契约待落定项、DoD）。
+开工前先跑步骤 0 预检（真实凭据打火山 TTS / Seedream / Pixabay，Kokoro 走 `py`）；合成脚手架在 `src/host/render/scaffold.ts`，M3/M4 会把它换成真正的 HyperFrames 模板
 （agent 可整份重写 `<project>/index.html`）。
 
 ## 8. 新会话的第一条命令

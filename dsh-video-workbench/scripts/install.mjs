@@ -158,8 +158,21 @@ function backupManifest(file, dryRun, skip) {
   return backup;
 }
 
+/**
+ * Profile names come from the command line; keep them inside the profiles
+ * directory (`--profile ../x` must not write elsewhere).
+ */
+function profileDir(profilesRoot, name) {
+  if (!/^[A-Za-z0-9._-]+$/u.test(name)) throw new Error("profile 名非法: " + name);
+  const dir = path.join(profilesRoot, name);
+  if (!path.resolve(dir).startsWith(path.resolve(profilesRoot) + path.sep)) {
+    throw new Error("profile 路径越界: " + name);
+  }
+  return dir;
+}
+
 function prepareManifest(profileName, profilesRoot) {
-  const dir = path.join(profilesRoot, profileName);
+  const dir = profileDir(profilesRoot, profileName);
   const file = path.join(dir, "package.json");
   if (!fs.existsSync(file)) throw new Error("找不到 " + file + "（先启动一次 DSH 生成 profile）");
   const profile = readJson(file);
@@ -170,6 +183,45 @@ function prepareManifest(profileName, profilesRoot) {
     throw new Error(profileName + " 的 dsh.profile.bundles 不是数组，无法安全安装");
   }
   return { dir, file, profile };
+}
+
+/**
+ * Temp file + rename, like the project store: an interrupted or concurrent
+ * write can never truncate the profile manifest, which is the DSH client's most
+ * important local state.
+ */
+function writeManifestAtomic(file, profile) {
+  clearStaleTemps(file);
+  const temp = file + ".tmp-video-workbench-" + process.pid;
+  fs.writeFileSync(temp, JSON.stringify(profile, null, 2) + "\n", "utf8");
+  try {
+    fs.renameSync(temp, file);
+  } catch (error) {
+    try {
+      fs.rmSync(temp, { force: true });
+    } catch {
+      // The rename failure is the interesting one.
+    }
+    throw error;
+  }
+}
+
+/** A killed run can leave a temp manifest behind; never let those accumulate. */
+function clearStaleTemps(file) {
+  const dir = path.dirname(file);
+  const prefix = path.basename(file) + ".tmp-video-workbench-";
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(prefix)) continue;
+      try {
+        fs.rmSync(path.join(dir, name), { force: true });
+      } catch {
+        // Locked leftover: harmless, the next run tries again.
+      }
+    }
+  } catch {
+    // The real write below reports the interesting failure.
+  }
 }
 
 function installProfile(profileName, profilesRoot, options) {
@@ -205,7 +257,13 @@ function installProfile(profileName, profilesRoot, options) {
     const backup = backupManifest(file, false, options.noBackup);
     if (bundleListed) profile.dsh.profile.bundles = profile.dsh.profile.bundles.filter((name) => name !== PLUGIN_NAME);
     if (profile.dependencies !== undefined && currentDep !== undefined) delete profile.dependencies[PLUGIN_NAME];
-    fs.writeFileSync(file, JSON.stringify(profile, null, 2) + "\n", "utf8");
+    writeManifestAtomic(file, profile);
+
+    // Read back so a broken write cannot be reported as success.
+    const written = readJson(file);
+    const removed = !written.dsh.profile.bundles.includes(PLUGIN_NAME)
+      && (written.dependencies === undefined || written.dependencies[PLUGIN_NAME] === undefined);
+    if (!removed) throw new Error(profileName + " 写入后校验失败");
     if (target !== null) removeLink(linkPath);
     console.log("[ok] " + profileName + ": 已卸载（" + (options.noBackup ? "未备份" : "备份 " + path.basename(backup)) + "）");
     return true;
@@ -235,7 +293,7 @@ function installProfile(profileName, profilesRoot, options) {
   if (profile.dependencies === undefined) profile.dependencies = {};
   profile.dependencies[PLUGIN_NAME] = DEP_SPEC;
   if (!bundleListed) profile.dsh.profile.bundles.push(PLUGIN_NAME);
-  fs.writeFileSync(file, JSON.stringify(profile, null, 2) + "\n", "utf8");
+  writeManifestAtomic(file, profile);
 
   // Read back so a broken write cannot be reported as success.
   const written = readJson(file);
@@ -262,7 +320,7 @@ function main() {
   let profiles;
   let fallbackNote = "";
   if (options.profiles.length > 0) {
-    const missing = options.profiles.filter((name) => !fs.existsSync(path.join(profilesRoot, name, "package.json")));
+    const missing = options.profiles.filter((name) => !fs.existsSync(path.join(profileDir(profilesRoot, name), "package.json")));
     if (missing.length > 0) throw new Error("profile 不存在: " + missing.join(", "));
     profiles = options.profiles;
   } else {

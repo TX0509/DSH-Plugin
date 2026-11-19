@@ -33,7 +33,7 @@ DSH 升级后，版本不满足会导致插件**拒绝激活**——这是有意
 | 6 | 播放 | 视频能播；聚焦视频后按 Esc 仍能关闭 |
 | 7 | 渲染（M2 起） | 跑一次 3 秒样例渲染，产物可播放 |
 | 8 | 进程（M2 起） | 取消渲染后无 `chrome-headless-shell` 残留 |
-| 9 | 单元测试 | `node --test` 全绿（当前 36 项） |
+| 9 | 单元测试 | `node --test` 全绿（当前 82 项） |
 | 10 | 卸载 | 卸载后 DSH 正常启动、无 patch 行残留 |
 
 ### 第 1 项的命令
@@ -66,11 +66,15 @@ $DSH_INSTALL_DIR/docs/upgrade-guide/README.md
 
 ## 4. 改哪里
 
-DSH 耦合代码目前集中在 `index.js` 与 `client.js` 的两个位置。M1 会把它们拆到
-`host/adapters/` 与 `client/adapters/`（**尚未建立**），升级时优先只改那一层：
+DSH 耦合代码集中在两层适配器；升级时优先只改那一层（`verify` 的 `dsh boundary`
+会拦住漏到业务代码里的直连）：
 
-- `host/adapters/`（M1）：`webServer.register` 的调用形态、路由路径、子进程环境
-- `client/adapters/`（M1）：slot 注册、`window.__ModuleLoader__` 入口、媒体 URL 构造、主题 token
+- `src/host/adapters/`：`webServer.register` / `getOrigin` 的调用形态、`webserver/index-inject`
+  契约、路由注册与生命周期、logger
+- `src/client/adapters/`：slot 注册、页面全局（token）与 baseURL 读取、样式注入
+
+`src/client/index.tsx` 只 `export default` 插件对象；模块注册由 `scripts/build.mjs`
+统一完成（单次注册，`id` 取自 `package.json`）。
 
 如果改动扩散到业务代码，说明 adapters 层没拦住，需要重构后再继续。
 
@@ -91,7 +95,9 @@ DSH 耦合代码目前集中在 `index.js` 与 `client.js` 的两个位置。M1 
 
 1. `shell.overlay` 与桌面窗口拖拽区域：macOS 需要 `data-window-drag-exclude`（Windows 不适用）。
 2. `conversation.input.left` 的 slot 是否存在（改名会导致入口消失）。
-3. `window.__ModuleLoader__.load` 的入口约定。**不要**用 `/plugins/<id>/client.js` 判断客户端是否加载：
+3. 客户端 lazy-CJS 入口约定：每个 `id` **只能注册一次**，工厂返回插件对象；
+   `scripts/build.mjs` 与 `test/client-bundle.test.mjs` 会校验。
+   **不要**用 `/plugins/<id>/client.js` 判断客户端是否加载：
    该路径在客户端正常工作时也会 404，应看 slot 占用（`video-workbench-trigger`）或界面。
 4. `webserver/index-inject` 的 `(table, peer)` 契约：token 注入依赖它，且必须只给 owner Peer。
 5. Desktop 外壳对 `dsh-app://app/*` 的转发范围（插件路由与媒体播放依赖它）；

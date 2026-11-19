@@ -3,12 +3,10 @@ import * as React from 'react'
 import type { ClientSlotContext } from '../shared/dsh'
 
 import { hostUrl, installStyles, readToken } from './adapters/context'
-import { loadClientModule } from './adapters/loader'
 import { registerEntry, registerOverlay } from './adapters/slots'
 
 const h = React.createElement
 
-const PLUGIN_ID = 'dsh-video-workbench'
 const OPEN_EVENT = 'dshvw:toggle'
 
 const mediaUrl = (name: string): string => hostUrl('api/video-workbench/media', {
@@ -235,17 +233,24 @@ function Panel(): React.ReactElement | null {
   ]))
 }
 
-loadClientModule({
-  id: PLUGIN_ID,
-  factory() {
-    return {
-      inject: ['slots'],
-      apply(ctx: ClientSlotContext) {
-        // One stylesheet for both entries, removed with the plugin run.
-        installStyles(ctx, CSS, 'video-workbench:styles')
-        registerEntry(ctx, 'video-workbench-trigger', Trigger)
-        registerOverlay(ctx, 'video-workbench-panel', Panel)
-      },
-    }
+/**
+ * The plugin module DSH loads.
+ *
+ * `scripts/build.mjs` wraps this bundle in the DSH lazy-CJS loader call and its
+ * factory returns this default export, so the module is registered exactly once
+ * and `apply` is what DSH calls. Never call the loader from this file again:
+ * a second registration for the same id was the key defect behind the v0.1.0
+ * client data-corruption incident.
+ *
+ * `__internals` exposes the pure helpers for the bundle test; DSH ignores it.
+ */
+export default {
+  inject: ['slots'],
+  apply(ctx: ClientSlotContext) {
+    // One stylesheet for both entries, removed with the plugin run.
+    installStyles(ctx, CSS, 'video-workbench:styles')
+    registerEntry(ctx, 'video-workbench-trigger', Trigger)
+    registerOverlay(ctx, 'video-workbench-panel', Panel)
   },
-})
+  __internals: { hostUrl, readToken },
+}

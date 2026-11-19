@@ -1,7 +1,8 @@
 # M1 执行计划：骨架与播放
 
 > 状态：**步骤 1–5 已完成**（构建骨架、DSH 适配层、项目模型与项目路由、`video_selfcheck`、
-> 文档与版本 0.1.0）；`verify` 全绿，测试 65 项。Host 半区已在运行中的 Desktop 上实测：
+> 文档与版本 0.1.0）；`verify` 全绿，测试 82 项（2026-11-19 修复客户端 bundle 重复注册等
+> 数据完整性问题后从 65 增至 82）。Host 半区已在运行中的 Desktop 上实测：
 > 启动自检 5/5、项目路由 200。
 > **剩余**：客户端半区完全重启验收（第 10 节里带「实机」的客户端项），清单见 [README](../README.md)「M1 验收」。
 > 本文替代 [PLAN.md](../PLAN.md) 里 M1 那一行，给出可以照着执行的步骤、目录、命令与验收标准。
@@ -136,14 +137,18 @@ const result = await esbuild.build({
   jsxFragment: 'React.Fragment',
   write: false,
 })
+const manifest = JSON.parse(await readFile('package.json', 'utf8'))
 const wrapped = [
   "window.__ModuleLoader__.load({",
-  "  id: 'dsh-video-workbench',",
+  `  id: ${JSON.stringify(manifest.name)},`,
   '  factory(require) {',
   '    var module = { exports: {} };',
   '    var exports = module.exports;',
   result.outputFiles[0].text,
-  '    return module.exports;',
+  '    var exported = module.exports;',
+  '    return exported && exported.__esModule && exported.default !== undefined',
+  '      ? exported.default',
+  '      : exported;',
   '  },',
   '});',
   '',
@@ -152,8 +157,10 @@ const wrapped = [
 
 要点：
 
-- `id` 必须等于包名；
+- `id` 必须等于包名，由构建脚本从 `package.json` 读取（不要手写）；
 - 包装器要在 bundle 之前定义 `module` / `exports`，bundle 末尾的 `module.exports = …` 会写进它；
+- `src/client/index.tsx` 只 `export default` 插件对象，工厂返回这个 default
+  （v0.1.0 曾因同一 id 注册两次导致客户端数据损坏，见 [M0-FINDINGS](M0-FINDINGS.md)）；
 - `react` 保持 external，由 `factory(require)` 的 `require` 解析；
 - 产物必须带一个可识别的构建标记（如首行注释），供 verify 与测试断言。
 
@@ -163,12 +170,14 @@ const wrapped = [
 tsc --noEmit
 checkDshBoundary()                          # DSH 调用只出现在 adapters 与 shared/dsh.ts
 node scripts/build.mjs
-git diff --exit-code index.js client.js     # 产物与提交一致
+checkArtifactShape()                        # 构建标记 / classic JSX / 单次注册 / id 与包名 / ESM 可导入
+git diff --exit-code HEAD -- index.js client.js   # 产物必须已提交（暂存不算）
 node --check index.js client.js
 node --test
 ```
 
-（实际实现：边界检查内联在 `scripts/verify.mjs` 的 `checkDshBoundary()`，不单独出脚本。）
+（实际实现：边界检查与产物形态检查都内联在 `scripts/verify.mjs`，不单独出脚本；
+「产物一致」对 `HEAD` 校验，所以未提交产物时 verify 必然报错，属预期。）
 
 `package.json` 增加：
 
@@ -343,7 +352,7 @@ M1 版本只做能在 Host 内完成、不需要渲染的检查：
 
 自动化项已验证（`node scripts/verify.mjs`）：
 
-- [x] `pnpm verify` 全绿（类型、DSH 边界、构建、产物一致、语法、测试 65 项）
+- [x] `pnpm verify` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、测试 82 项）
 - [x] `node --check index.js client.js` 通过
 - [x] 产物已提交，且与源码一致（verify 校验）
 - [x] 仓库无 `node_modules` 提交

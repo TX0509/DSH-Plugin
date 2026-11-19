@@ -11,14 +11,13 @@ import { isFilesystemRoot } from '../paths'
 
 import { migrateProject } from './migrate'
 import type { Aspect, Fps, ProjectScene, ProjectStyle, ProjectV1 } from './schema'
-import { validateProject } from './schema'
+import { isProjectId, validateProject } from './schema'
 
 export const PROJECT_FILE = 'project.json'
 
 /** Directories created inside every new project. */
 export const PROJECT_SUBDIRS = ['composition', 'assets', 'renders'] as const
 
-const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u
 const MAX_SLUG_ATTEMPTS = 1000
 
 export type StoreResult =
@@ -90,7 +89,7 @@ export function ensureProjectRoot(root: string): string {
 }
 
 function projectDir(root: string, id: string): string {
-  if (!PROJECT_ID.test(id)) throw new Error(`项目 id 非法: ${id}`)
+  if (!isProjectId(id)) throw new Error(`项目 id 非法: ${id}`)
   return path.join(root, id)
 }
 
@@ -110,12 +109,36 @@ function writeJsonAtomic(target: string, value: unknown): void {
   }
 }
 
+/** The directory skeleton every project has, whether it is created or updated. */
+function createProjectLayout(dir: string): void {
+  for (const sub of PROJECT_SUBDIRS) fs.mkdirSync(path.join(dir, sub), { recursive: true })
+}
+
+/**
+ * Write project.json into `dir`.
+ * When this call created the directory, a failed write removes it again so no
+ * empty project directory is left behind.
+ * Exported so tests can drive the cleanup path directly.
+ */
+export function persistProject(dir: string, project: ProjectV1, createdDir: boolean): void {
+  try {
+    writeJsonAtomic(path.join(dir, PROJECT_FILE), project)
+  } catch (error) {
+    if (createdDir) fs.rmSync(dir, { recursive: true, force: true })
+    throw error
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 /** Allocate `<timestamp>` (or `<timestamp>-2` on collision) and create it. */
 function allocateProjectDir(root: string, now: Date): string {
   const base = slugFor(now)
   for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt += 1) {
     const id = attempt === 1 ? base : `${base}-${attempt}`
-    if (!PROJECT_ID.test(id)) continue
+    if (!isProjectId(id)) continue
     try {
       fs.mkdirSync(path.join(root, id))
       return id
@@ -150,15 +173,15 @@ export function createProject(
     return validated
   }
   const dir = projectDir(resolvedRoot, id)
-  for (const sub of PROJECT_SUBDIRS) fs.mkdirSync(path.join(dir, sub), { recursive: true })
-  writeJsonAtomic(path.join(dir, PROJECT_FILE), validated.project)
+  createProjectLayout(dir)
+  persistProject(dir, validated.project, true)
   return { ok: true, project: validated.project }
 }
 
 /** Read, migrate and validate one project; `id` must match the directory name. */
 export function readProject(root: string, id: string): StoreResult {
   const resolvedRoot = path.resolve(root)
-  if (!PROJECT_ID.test(id)) return { ok: false, errors: [`项目 id 非法: ${id}`] }
+  if (!isProjectId(id)) return { ok: false, errors: [`项目 id 非法: ${id}`] }
   const file = path.join(projectDir(resolvedRoot, id), PROJECT_FILE)
   let text: string
   try {
@@ -184,12 +207,26 @@ export function readProject(root: string, id: string): StoreResult {
 
 /** Validate then write a project; creates the directory when it is missing. */
 export function writeProject(root: string, value: unknown): StoreResult {
-  const resolvedRoot = path.resolve(root)
   const validated = validateProject(value)
   if (!validated.ok) return validated
+  let resolvedRoot: string
+  try {
+    // Same guard as createProject: a filesystem root would write to a drive root.
+    resolvedRoot = ensureProjectRoot(root)
+  } catch (error) {
+    return { ok: false, errors: [errorMessage(error)] }
+  }
   const dir = projectDir(resolvedRoot, validated.project.id)
-  fs.mkdirSync(dir, { recursive: true })
-  writeJsonAtomic(path.join(dir, PROJECT_FILE), validated.project)
+  const createdDir = !fs.existsSync(dir)
+  try {
+    createProjectLayout(dir)
+    persistProject(dir, validated.project, createdDir)
+  } catch (error) {
+    // Layout creation can fail after some subdirectories exist; remove only the
+    // directory this call created, never an existing project.
+    if (createdDir) fs.rmSync(dir, { recursive: true, force: true })
+    return { ok: false, errors: [errorMessage(error)] }
+  }
   return validated
 }
 
@@ -205,7 +242,7 @@ export function listProjects(root: string): ListProjectsResult {
   const projects: ProjectSummary[] = []
   const invalid: Array<{ id: string; errors: string[] }> = []
   for (const entry of entries) {
-    if (!entry.isDirectory() || !PROJECT_ID.test(entry.name)) continue
+    if (!entry.isDirectory() || !isProjectId(entry.name)) continue
     const result = readProject(resolvedRoot, entry.name)
     if (result.ok) {
       projects.push({ id: entry.name, title: result.project.title, scenes: result.project.scenes.length })

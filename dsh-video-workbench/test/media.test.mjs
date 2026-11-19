@@ -182,6 +182,57 @@ test('media route refuses to follow a link that escapes the root', async (t) => 
   })
 })
 
+test('If-None-Match wins over a Range request', async () => {
+  await withServer(async ({ origin }) => {
+    const first = await call(origin, mediaPath('clip.mp4'))
+    const etag = first.headers.etag
+    assert.ok(etag)
+    const response = await call(origin, mediaPath('clip.mp4'), {
+      headers: { Range: 'bytes=0-9', 'If-None-Match': etag },
+    })
+    assert.equal(response.status, 304)
+    assert.equal(response.body.length, 0)
+  })
+})
+
+test('If-None-Match wins over an unsatisfiable Range (304, not 416)', async () => {
+  await withServer(async ({ origin }) => {
+    const first = await call(origin, mediaPath('clip.mp4'))
+    const etag = first.headers.etag
+    assert.ok(etag)
+    const response = await call(origin, mediaPath('clip.mp4'), {
+      headers: { Range: 'bytes=9999-', 'If-None-Match': etag },
+    })
+    assert.equal(response.status, 304)
+    assert.equal(response.body.length, 0)
+  })
+})
+
+test('a non-matching If-None-Match still answers a Range request with 206', async () => {
+  await withServer(async ({ origin }) => {
+    const response = await call(origin, mediaPath('clip.mp4'), {
+      headers: { Range: 'bytes=10-19', 'If-None-Match': '"stale"' },
+    })
+    assert.equal(response.status, 206)
+    assert.equal(response.headers['content-range'], 'bytes 10-19/200')
+    assert.equal(response.body.length, 10)
+  })
+})
+
+test('HEAD with a matching If-None-Match and a Range answers 304', async () => {
+  await withServer(async ({ origin }) => {
+    const first = await call(origin, mediaPath('clip.mp4'), { method: 'HEAD' })
+    const etag = first.headers.etag
+    assert.ok(etag)
+    const response = await call(origin, mediaPath('clip.mp4'), {
+      method: 'HEAD',
+      headers: { Range: 'bytes=0-9', 'If-None-Match': etag },
+    })
+    assert.equal(response.status, 304)
+    assert.equal(response.body.length, 0)
+  })
+})
+
 test('media route answers HEAD without a body and 405 for other methods', async () => {
   await withServer(async ({ origin }) => {
     const head = await call(origin, mediaPath('clip.mp4'), { method: 'HEAD' })

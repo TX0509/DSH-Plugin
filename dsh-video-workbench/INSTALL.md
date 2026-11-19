@@ -25,7 +25,8 @@ node scripts/install.mjs --profile desktop
 
 1. 在 `<profile>/node_modules/` 建立指向本目录的链接（Windows 用 junction）；
 2. 备份 `<profile>/package.json`；
-3. 写入 `dependencies["dsh-video-workbench"] = "link:<本目录>"` 并登记到 `dsh.profile.bundles`；
+3. 写入 `dependencies["dsh-video-workbench"] = "link:<本目录>"` 并登记到 `dsh.profile.bundles`
+   （临时文件 + `rename` 原子写：中断也不会留下截断的 profile `package.json`）；
 4. 读回校验。
 
 常用参数：

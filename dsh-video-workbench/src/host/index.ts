@@ -43,6 +43,7 @@ export {
   defaultScene,
   ensureProjectRoot,
   listProjects,
+  persistProject,
   readProject,
   slugFor,
   writeProject,
@@ -260,6 +261,19 @@ function serveMedia(request: IncomingMessage, response: ServerResponse, context:
     'last-modified': stat.mtime.toUTCString(),
   }
 
+  // If-None-Match is evaluated before Range: a matching validator answers 304
+  // even when the request also carries a Range header (RFC 7232 §6).
+  if (matchesEtag(request.headers['if-none-match'], etag)) {
+    response.writeHead(304, {
+      etag,
+      'cache-control': base['cache-control'],
+      'last-modified': base['last-modified'],
+      'accept-ranges': base['accept-ranges'],
+    })
+    response.end()
+    return
+  }
+
   const requested = request.headers['if-range']
   const range: ParsedRange = requested === undefined || requested === etag
     ? parseRange(request.headers.range, stat.size)
@@ -267,17 +281,6 @@ function serveMedia(request: IncomingMessage, response: ServerResponse, context:
 
   if (range === 'invalid') {
     response.writeHead(416, { ...base, 'content-range': `bytes */${stat.size}` })
-    response.end()
-    return
-  }
-
-  if (range === undefined && matchesEtag(request.headers['if-none-match'], etag)) {
-    response.writeHead(304, {
-      etag,
-      'cache-control': base['cache-control'],
-      'last-modified': base['last-modified'],
-      'accept-ranges': base['accept-ranges'],
-    })
     response.end()
     return
   }
@@ -464,7 +467,7 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
             logger.error(`[video-workbench] 无法写入 selfcheck 报告: ${String(error)}`)
           }
           if (failed.length === 0) {
-            logger.info('[video-workbench] selfcheck: 5/5 通过')
+            logger.info(`[video-workbench] selfcheck: ${result.checks.length} 项全部通过`)
           } else {
             logger.error(`[video-workbench] selfcheck ${result.checks.length - failed.length}/${result.checks.length} 通过：`
               + failed.map((check) => `${check.name}（${check.detail}）`).join('；'))

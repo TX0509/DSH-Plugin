@@ -3,7 +3,7 @@
 // No JSON-schema dependency: the plugin ships zero runtime dependencies, and
 // every error string is written to be shown to the user verbatim.
 
-import { FORBIDDEN_NAME, MAX_SEGMENT_LENGTH, MAX_SEGMENTS } from '../paths'
+import { FORBIDDEN_NAME, isReservedName, MAX_SEGMENT_LENGTH, MAX_SEGMENTS } from '../paths'
 
 export const SCHEMA_VERSION = 1
 
@@ -60,6 +60,11 @@ export type ValidationResult =
 const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u
 const SCENE_ID = /^s[0-9]+$/u
 
+/** Project ids double as directory names; the store reuses this rule. */
+export function isProjectId(value: string): boolean {
+  return PROJECT_ID.test(value)
+}
+
 const MAX_TITLE = 80
 const MAX_SCENES = 50
 const MAX_TEXT = 500
@@ -86,7 +91,7 @@ function hasAtMostDecimals(value: number, decimals: number): boolean {
 }
 
 function readProjectId(value: unknown, errors: Errors): string | undefined {
-  if (typeof value !== 'string' || !PROJECT_ID.test(value)) {
+  if (typeof value !== 'string' || !isProjectId(value)) {
     errors.push('id 必须匹配 ^[a-z0-9][a-z0-9-]{0,63}$')
     return undefined
   }
@@ -167,8 +172,9 @@ function readAssetPath(value: unknown, field: string, errors: Errors): string | 
       errors.push(`${field} 不能包含空段、.、.. 或过长段`)
       return undefined
     }
-    if (FORBIDDEN_NAME.test(part) || part.startsWith('.') || part.endsWith('.') || part.endsWith(' ')) {
-      errors.push(`${field} 含非法字符或隐藏文件名`)
+    if (FORBIDDEN_NAME.test(part) || isReservedName(part)
+      || part.startsWith('.') || part.endsWith('.') || part.endsWith(' ')) {
+      errors.push(`${field} 含非法字符、Windows 保留设备名或隐藏文件名`)
       return undefined
     }
   }

@@ -67,6 +67,10 @@ import path from "node:path";
 var FORBIDDEN_NAME = /[<>:"|?*\u0000-\u001f]/u;
 var MAX_SEGMENTS = 5;
 var MAX_SEGMENT_LENGTH = 128;
+var WINDOWS_RESERVED = /^(?:con|prn|aux|nul|clock\$|conin\$|conout\$|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])(\..*)?$/iu;
+function isReservedName(segment) {
+  return WINDOWS_RESERVED.test(segment);
+}
 function isFilesystemRoot(candidate) {
   const resolved = path.resolve(candidate);
   return path.parse(resolved).root === resolved;
@@ -85,7 +89,7 @@ function safeResolve(root, relative) {
   for (const part of parts) {
     if (part.length > MAX_SEGMENT_LENGTH) return void 0;
     if (part.startsWith(".") || part.endsWith(".") || part.endsWith(" ")) return void 0;
-    if (FORBIDDEN_NAME.test(part)) return void 0;
+    if (FORBIDDEN_NAME.test(part) || isReservedName(part)) return void 0;
   }
   const resolved = path.resolve(root, ...parts);
   return contains(root, resolved) ? resolved : void 0;
@@ -130,6 +134,9 @@ var FPS_VALUES = [24, 25, 30, 60];
 var MEDIA_KINDS = ["none", "image", "video"];
 var PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 var SCENE_ID = /^s[0-9]+$/u;
+function isProjectId(value) {
+  return PROJECT_ID.test(value);
+}
 var MAX_TITLE = 80;
 var MAX_SCENES = 50;
 var MAX_TEXT = 500;
@@ -148,7 +155,7 @@ function hasAtMostDecimals(value, decimals) {
   return Math.abs(value * factor - Math.round(value * factor)) < 1e-6;
 }
 function readProjectId(value, errors) {
-  if (typeof value !== "string" || !PROJECT_ID.test(value)) {
+  if (typeof value !== "string" || !isProjectId(value)) {
     errors.push("id \u5FC5\u987B\u5339\u914D ^[a-z0-9][a-z0-9-]{0,63}$");
     return void 0;
   }
@@ -223,8 +230,8 @@ function readAssetPath(value, field, errors) {
       errors.push(`${field} \u4E0D\u80FD\u5305\u542B\u7A7A\u6BB5\u3001.\u3001.. \u6216\u8FC7\u957F\u6BB5`);
       return void 0;
     }
-    if (FORBIDDEN_NAME.test(part) || part.startsWith(".") || part.endsWith(".") || part.endsWith(" ")) {
-      errors.push(`${field} \u542B\u975E\u6CD5\u5B57\u7B26\u6216\u9690\u85CF\u6587\u4EF6\u540D`);
+    if (FORBIDDEN_NAME.test(part) || isReservedName(part) || part.startsWith(".") || part.endsWith(".") || part.endsWith(" ")) {
+      errors.push(`${field} \u542B\u975E\u6CD5\u5B57\u7B26\u3001Windows \u4FDD\u7559\u8BBE\u5907\u540D\u6216\u9690\u85CF\u6587\u4EF6\u540D`);
       return void 0;
     }
   }
@@ -359,7 +366,6 @@ function migrateProject(raw) {
 // src/host/projects/store.ts
 var PROJECT_FILE = "project.json";
 var PROJECT_SUBDIRS = ["composition", "assets", "renders"];
-var PROJECT_ID2 = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 var MAX_SLUG_ATTEMPTS = 1e3;
 function slugFor(date) {
   const pad = (value) => String(value).padStart(2, "0");
@@ -387,7 +393,7 @@ function ensureProjectRoot(root) {
   return resolved;
 }
 function projectDir(root, id) {
-  if (!PROJECT_ID2.test(id)) throw new Error(`\u9879\u76EE id \u975E\u6CD5: ${id}`);
+  if (!isProjectId(id)) throw new Error(`\u9879\u76EE id \u975E\u6CD5: ${id}`);
   return path3.join(root, id);
 }
 function writeJsonAtomic(target, value) {
@@ -404,11 +410,25 @@ function writeJsonAtomic(target, value) {
     throw error;
   }
 }
+function createProjectLayout(dir) {
+  for (const sub of PROJECT_SUBDIRS) fs2.mkdirSync(path3.join(dir, sub), { recursive: true });
+}
+function persistProject(dir, project, createdDir) {
+  try {
+    writeJsonAtomic(path3.join(dir, PROJECT_FILE), project);
+  } catch (error) {
+    if (createdDir) fs2.rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+}
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
 function allocateProjectDir(root, now) {
   const base = slugFor(now);
   for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt += 1) {
     const id = attempt === 1 ? base : `${base}-${attempt}`;
-    if (!PROJECT_ID2.test(id)) continue;
+    if (!isProjectId(id)) continue;
     try {
       fs2.mkdirSync(path3.join(root, id));
       return id;
@@ -438,13 +458,13 @@ function createProject(root, input, options = {}) {
     return validated;
   }
   const dir = projectDir(resolvedRoot, id);
-  for (const sub of PROJECT_SUBDIRS) fs2.mkdirSync(path3.join(dir, sub), { recursive: true });
-  writeJsonAtomic(path3.join(dir, PROJECT_FILE), validated.project);
+  createProjectLayout(dir);
+  persistProject(dir, validated.project, true);
   return { ok: true, project: validated.project };
 }
 function readProject(root, id) {
   const resolvedRoot = path3.resolve(root);
-  if (!PROJECT_ID2.test(id)) return { ok: false, errors: [`\u9879\u76EE id \u975E\u6CD5: ${id}`] };
+  if (!isProjectId(id)) return { ok: false, errors: [`\u9879\u76EE id \u975E\u6CD5: ${id}`] };
   const file = path3.join(projectDir(resolvedRoot, id), PROJECT_FILE);
   let text;
   try {
@@ -468,12 +488,23 @@ function readProject(root, id) {
   return validated;
 }
 function writeProject(root, value) {
-  const resolvedRoot = path3.resolve(root);
   const validated = validateProject(value);
   if (!validated.ok) return validated;
+  let resolvedRoot;
+  try {
+    resolvedRoot = ensureProjectRoot(root);
+  } catch (error) {
+    return { ok: false, errors: [errorMessage(error)] };
+  }
   const dir = projectDir(resolvedRoot, validated.project.id);
-  fs2.mkdirSync(dir, { recursive: true });
-  writeJsonAtomic(path3.join(dir, PROJECT_FILE), validated.project);
+  const createdDir = !fs2.existsSync(dir);
+  try {
+    createProjectLayout(dir);
+    persistProject(dir, validated.project, createdDir);
+  } catch (error) {
+    if (createdDir) fs2.rmSync(dir, { recursive: true, force: true });
+    return { ok: false, errors: [errorMessage(error)] };
+  }
   return validated;
 }
 function listProjects(root) {
@@ -487,7 +518,7 @@ function listProjects(root) {
   const projects = [];
   const invalid = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || !PROJECT_ID2.test(entry.name)) continue;
+    if (!entry.isDirectory() || !isProjectId(entry.name)) continue;
     const result = readProject(resolvedRoot, entry.name);
     if (result.ok) {
       projects.push({ id: entry.name, title: result.project.title, scenes: result.project.scenes.length });
@@ -873,20 +904,20 @@ function serveMedia(request2, response, context) {
     etag,
     "last-modified": stat.mtime.toUTCString()
   };
-  const requested = request2.headers["if-range"];
-  const range = requested === void 0 || requested === etag ? parseRange(request2.headers.range, stat.size) : void 0;
-  if (range === "invalid") {
-    response.writeHead(416, { ...base, "content-range": `bytes */${stat.size}` });
-    response.end();
-    return;
-  }
-  if (range === void 0 && matchesEtag(request2.headers["if-none-match"], etag)) {
+  if (matchesEtag(request2.headers["if-none-match"], etag)) {
     response.writeHead(304, {
       etag,
       "cache-control": base["cache-control"],
       "last-modified": base["last-modified"],
       "accept-ranges": base["accept-ranges"]
     });
+    response.end();
+    return;
+  }
+  const requested = request2.headers["if-range"];
+  const range = requested === void 0 || requested === etag ? parseRange(request2.headers.range, stat.size) : void 0;
+  if (range === "invalid") {
+    response.writeHead(416, { ...base, "content-range": `bytes */${stat.size}` });
     response.end();
     return;
   }
@@ -1024,7 +1055,7 @@ function apply(ctx, config = {}) {
             logger.error(`[video-workbench] \u65E0\u6CD5\u5199\u5165 selfcheck \u62A5\u544A: ${String(error)}`);
           }
           if (failed.length === 0) {
-            logger.info("[video-workbench] selfcheck: 5/5 \u901A\u8FC7");
+            logger.info(`[video-workbench] selfcheck: ${result.checks.length} \u9879\u5168\u90E8\u901A\u8FC7`);
           } else {
             logger.error(`[video-workbench] selfcheck ${result.checks.length - failed.length}/${result.checks.length} \u901A\u8FC7\uFF1A` + failed.map((check) => `${check.name}\uFF08${check.detail}\uFF09`).join("\uFF1B"));
           }
@@ -1063,6 +1094,7 @@ export {
   matchesEtag,
   migrateProject,
   parseRange,
+  persistProject,
   readProject,
   readSelfcheckReport,
   resolveProjectsRoot,

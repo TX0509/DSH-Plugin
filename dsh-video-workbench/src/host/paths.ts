@@ -9,6 +9,17 @@ export const FORBIDDEN_NAME = /[<>:"|?*\u0000-\u001f]/u
 export const MAX_SEGMENTS = 5
 export const MAX_SEGMENT_LENGTH = 128
 
+/**
+ * Windows device names are unusable as file names anywhere in a path, with or
+ * without an extension (`CON`, `con.mp4`, `LPT1.txt`). The console aliases and
+ * the superscript device forms are reserved by the same rules.
+ */
+const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|clock\$|conin\$|conout\$|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])(\..*)?$/iu
+
+export function isReservedName(segment: string): boolean {
+  return WINDOWS_RESERVED.test(segment)
+}
+
 /** A configured root of `C:\` or `/` would expose the whole drive. */
 export function isFilesystemRoot(candidate: string): boolean {
   const resolved = path.resolve(candidate)
@@ -36,7 +47,7 @@ export function safeResolve(root: string, relative: string | null | undefined): 
   for (const part of parts) {
     if (part.length > MAX_SEGMENT_LENGTH) return undefined
     if (part.startsWith('.') || part.endsWith('.') || part.endsWith(' ')) return undefined
-    if (FORBIDDEN_NAME.test(part)) return undefined
+    if (FORBIDDEN_NAME.test(part) || isReservedName(part)) return undefined
   }
   const resolved = path.resolve(root, ...parts)
   return contains(root, resolved) ? resolved : undefined

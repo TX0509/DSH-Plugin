@@ -64,3 +64,15 @@ test('safeResolve: rejects Windows-reserved and odd names', () => {
   assert.equal(safeResolve(ROOT, 'name '), undefined)
   assert.equal(safeResolve(ROOT, 'x'.repeat(129) + '.mp4'), undefined)
 })
+
+test('safeResolve: rejects Windows device names with or without an extension', () => {
+  for (const name of [
+    'CON', 'con.mp4', 'PRN', 'AUX', 'NUL.txt', 'COM1', 'LPT9.mp4',
+    'CONIN$', 'CONOUT$', 'CLOCK$', 'COM\u00b9',
+  ]) {
+    assert.equal(safeResolve(ROOT, name), undefined, `expected ${name} to be rejected`)
+  }
+  // Names that merely start with a device name are still legal.
+  assert.equal(safeResolve(ROOT, 'console.mp4'), path.join(ROOT, 'console.mp4'))
+  assert.equal(safeResolve(ROOT, 'com10.mp4'), path.join(ROOT, 'com10.mp4'))
+})

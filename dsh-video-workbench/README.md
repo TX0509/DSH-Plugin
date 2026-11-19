@@ -4,7 +4,7 @@ DSH Desktop 的短视频制作工作台插件。当前处于 **M1（骨架与播
 TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只读项目路由、`video_selfcheck` 已就位；
 渲染与素材/配音在 M2–M3。
 
-> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物一致、语法、65 项测试）。
+> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、82 项测试）。
 > 桌面端**重启后的实机验收尚未执行**，清单见下方「M1 验收」。
 
 ![视频工作台浮层](docs/m0-overlay.png)
@@ -22,7 +22,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.0.2 | Esc 关闭 / 焦点归还 | ✅ 关闭后焦点回到 ▶ 按钮 |
 | v0.0.3 | 重启后复测 | ✅ `ping` 不再返回 `node`；token、206、播放至 1.56s 均通过 |
 | v0.0.4 | 重启后全链路复测 | ✅ token、206、播放、拖动 seek、错误态与"重试"、视频聚焦时 Esc 关闭 全部通过 |
-| v0.1.0（M1） | 类型检查 / 构建 / 产物一致 / DSH 边界 / 65 项测试 | ✅ `node scripts/verify.mjs` 全绿 |
+| v0.1.0（M1） | 类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 82 项测试 | ✅ `node scripts/verify.mjs` 全绿（需产物已提交） |
 | v0.1.0（M1） | 运行中的 Desktop 热重载 Host 后启动自检 | ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
 | v0.1.0（M1） | 桌面端完全重启后的客户端验收（▶/token/播放/Esc） | ⏳ **待执行**（见「M1 验收」） |
@@ -122,7 +122,7 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ```powershell
 cd dsh-video-workbench
-node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物一致 + 语法 + 测试（65）
+node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（82）
 node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
 ```
 
@@ -136,10 +136,17 @@ Host 侧已在运行中的 Desktop 上验证（修改 profile 配置会热重载
 
 剩余（客户端 bundle 只在启动时合成，需要**完全退出并重新打开 DSH**）：
 
+> 注意：2026-11-19 修复数据损坏后，desktop profile 已重置——插件未安装、profile 里也没有
+> `projectsRoot` 配置。重启验收前先完全退出 DSH，执行 `node scripts/install.mjs`，
+> 并按 [INSTALL.md](INSTALL.md)「配置」补配置。
+
 1. 重启后等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔ 且退出码 0；
 2. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、能播放与拖动、
    视频聚焦时 Esc 关闭、错误态可"重试"；
 3. 亮色/暗色、侧栏展开/收起、窄窗口快速过一遍（完整矩阵留 M6）。
+
+本轮客户端 bundle 已改为**单次模块注册**（修复 v0.1.0 的客户端数据损坏问题），
+重启验收时请一并确认：composer 左侧只有一个 ▶、无重复浮层、DevTools 无 `slot entry crashed`。
 
 ## 兼容性
 
@@ -154,15 +161,13 @@ Host 侧已在运行中的 Desktop 上验证（修改 profile 配置会热重载
 - 项目功能没有 UI（M2 起接入）；客户端浮层仍是 M0 的播放器 + 诊断信息。
 - 界面文案暂为中文硬编码，未接入 Client locale 服务（仅插件管理器的标题/描述做了中英双语）。
 - 浮层是全屏模态；macOS 的窗口拖拽区域尚未适配（`data-window-drag-exclude`）。
-- 客户端 bundle 目前仍保留历史遗留的双层模块注册（见 [docs/HANDOFF.md](docs/HANDOFF.md) §9），
-  行为与 M0 一致，清理需要一次实机重启验证。
 
 ## 开发
 
 ```sh
 node scripts/build.mjs     # src/ → 根目录 index.js / client.js
 node scripts/verify.mjs    # 一条命令跑完全部检查
-node --test                # 只跑测试（65 项）
+node --test                # 只跑测试（82 项）
 ```
 
 ## 未完成

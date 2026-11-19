@@ -192,7 +192,20 @@ M0 的四条链路全部打通：渲染、路由、Range 播放、取消清理�
 操作方式：用带前台窗口校验的辅助脚本（`AppActivate` + 校验 `GetForegroundWindow`），
 避免点击落到其它窗口；测试期间临时把 `test.mp4` 改名为 `.off`，恢复后删除备份。
 
+## 2026-11-19：客户端数据损坏事故后的加固（v0.1.0 未发版）
 
+背景：M1 客户端接入调试期间出现过 **DSH 客户端数据损坏**，已由用户修复，环境随后重置
+（desktop profile 里插件与配置都不在了，重启验收前要重新安装）。事故与下面几处加固相关；
+无论直接根因是哪一处，同一类"重复写入 / 非原子写入"风险都已处理：
 
+| 问题 | 风险 | 修复 | 守护 |
+| --- | --- | --- | --- |
+| 客户端 bundle 对同一 `id` 注册两次 | 重复挂载、模块表/客户端状态异常 | 构建脚本只注册一次并返回 `export default` 插件对象；删除 `src/client/adapters/loader.ts` | `verify` 产物形态（`loadCount === 1`）+ `test/client-bundle.test.mjs`（真实产物进 VM，工厂执行后仍断言只注册一次） |
+| `install.mjs` 直写 profile `package.json` | 进程中断或应用退出回写会截断 profile（客户端最重要的本地状态） | 临时文件 + `rename` 原子写；卸载后读回校验；`--profile` 名限制在 profiles 目录内 | `test/install.test.mjs`：临时 `DSH_HOME` 下 `--check`/`--dry-run`/安装/卸载/路径逃逸，断言无 `.tmp-*` 残留 |
+| 写 `project.json` 失败留下空项目目录；`writeProject` 不建子目录 | 目录像项目却没有 `project.json`，后续读取报错 | 抽 `createProjectLayout` / `persistProject`，只清理本次新建的目录 | `writeProject` 布局与盘符根守卫用例 |
+| `If-None-Match` 未先于 `Range` 评估 | 带缓存校验的 Range 请求返回 206 而非 304，缓存语义不一致 | 先判 `If-None-Match`（RFC 7232 §6） | 304-over-Range / 304-over-416 用例 |
+| Windows 设备名（`con` / `aux` / `com1`…）可被放行 | 在 Windows 上无法创建或行为异常 | `paths.ts` 新增 `isReservedName`，媒体与项目资产校验共用 | 设备名用例（含 `com10` / `console` 反例） |
 
-
+测试从 65 项增至 82 项（含安装脚本与项目失败路径用例）；`verify` 新增"产物形态"检查（构建标记、
+classic JSX、单次注册、`id` 与包名一致、Host 产物可按 ESM 导入并导出 `apply`），
+且"产物一致"改为对 `HEAD` 校验，只暂存不算提交。

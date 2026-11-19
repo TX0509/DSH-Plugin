@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -20,6 +21,7 @@ import {
   createProject,
   listProjects,
   migrateProject,
+  persistProject,
   readProject,
   slugFor,
   validateProject,
@@ -221,6 +223,7 @@ test('validateProject: rejects malformed scenes and media', () => {
     ['media.asset', { scenes: [{ ...validProject().scenes[0], media: { kind: 'none', asset: 'assets/a.png' } }] }],
     ['media.asset', { scenes: [{ ...validProject().scenes[0], media: { kind: 'image', asset: '../secret.png' } }] }],
     ['media.asset', { scenes: [{ ...validProject().scenes[0], media: { kind: 'image', asset: 'C:/x.png' } }] }],
+    ['media.asset', { scenes: [{ ...validProject().scenes[0], media: { kind: 'image', asset: 'assets/con.png' } }] }],
     ['voice.speed', { scenes: [{ ...validProject().scenes[0], voice: { speed: 3 } }] }],
   ]
   for (const [field, patch] of cases) {
@@ -307,6 +310,61 @@ test('writeProject: atomic write leaves no temp file and reads back intact', () 
     const read = readProject(projectsRoot, project.id)
     assert.equal(read.ok, true)
     assert.deepEqual(read.project, project)
+  } finally {
+    removeRoots(projectsRoot)
+  }
+})
+
+test('writeProject: refuses a filesystem root and creates a missing root', () => {
+  const { projectsRoot } = temporaryRoots()
+  try {
+    const project = validProject()
+    const filesystemRoot = path.parse(process.cwd()).root
+    const refused = writeProject(filesystemRoot, project)
+    assert.equal(refused.ok, false)
+    assert.ok(refused.errors.join(' ').includes('盘符根目录'))
+
+    const nested = path.join(projectsRoot, 'deep', 'nested')
+    const written = writeProject(nested, project)
+    assert.equal(written.ok, true)
+    assert.equal(readProject(nested, project.id).ok, true)
+    // writeProject must leave the same layout createProject does.
+    for (const name of ['project.json', 'composition', 'assets', 'renders']) {
+      assert.equal(existsSync(path.join(nested, project.id, name)), true, `expected ${name} to exist`)
+    }
+  } finally {
+    removeRoots(projectsRoot)
+  }
+})
+
+test('writeProject: reports a failed write as a result instead of throwing', () => {
+  const { projectsRoot } = temporaryRoots()
+  try {
+    const project = validProject()
+    const nested = path.join(projectsRoot, 'write-failure')
+    // A directory where project.json belongs makes the atomic rename fail after
+    // the project layout has been created.
+    mkdirSync(path.join(nested, project.id, 'project.json'), { recursive: true })
+
+    const written = writeProject(nested, project)
+    assert.equal(written.ok, false)
+    assert.ok(written.errors.length > 0)
+    // The directory pre-existed this call, so it must not be deleted.
+    assert.equal(existsSync(path.join(nested, project.id)), true)
+  } finally {
+    removeRoots(projectsRoot)
+  }
+})
+
+test('persistProject: removes the directory it created when the write fails', () => {
+  const { projectsRoot } = temporaryRoots()
+  try {
+    const dir = path.join(projectsRoot, 'broken-project')
+    mkdirSync(dir)
+    mkdirSync(path.join(dir, 'project.json'))
+
+    assert.throws(() => persistProject(dir, validProject(), true))
+    assert.equal(existsSync(dir), false, 'the directory created by this call must be removed')
   } finally {
     removeRoots(projectsRoot)
   }

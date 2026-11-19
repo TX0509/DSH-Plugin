@@ -1,6 +1,7 @@
 # M2 执行计划：渲染管线
 
-> 状态：**计划稿，等待开工**。基线 v0.1.2（M1 完成并通过实机验收，`verify` 全绿、100 项测试）。
+> 状态：**步骤 0–1 已完成**（2026-11-19）；下一步「步骤 2：运行时供给与校验」。
+> 基线 v0.1.2（M1 完成并通过实机验收，`verify` 全绿、127 项测试）。
 > 本文对应 [PLAN.md](../PLAN.md) 里程碑表里「M2 渲染管线」那一行，把它拆成可以照着执行的步骤、
 > 接口、命令与验收标准；结构对齐 [M1-PLAN.md](M1-PLAN.md)。
 > 范围：Windows + DSH Desktop；Web / macOS 不在 M2 验收范围。
@@ -97,7 +98,7 @@ M4 的 agent 工具只包这层，不再写第二套逻辑（AGENTS.md §5 要�
 | `GET /api/video-workbench/render/<id>` | 轮询进度 | `200 { job }` / `404` |
 | `DELETE /api/video-workbench/render/<id>` | 取消 | `202 { job }` / `404` / `409 { error: 'finished' }` |
 
-- **进度通道 = 轮询**（建议，见 §14）：1000 ms 间隔，UI 侧 `GET`；不做 SSE/WS，避免验证 `registerUpgrade`。
+- **进度通道 = 轮询**（已确认，§14-A）：1000 ms 间隔，UI 侧 `GET`；不做 SSE/WS。
 - 写操作只接受 `POST/DELETE + token`；仍不校验 Origin（Desktop 转发会剥掉），但**只允许本插件路由做这几件事**，
   不开放任意路径/命令。token 只注入 owner 页面（M1 已实现）。
 - 请求体限制 16 KB，只接受 `{ projectId }`；`projectId` 必须过 `isProjectId` 且项目存在。
@@ -152,7 +153,7 @@ $DSH_HOME/cache/dsh-video-workbench/runtime/     # 可用 Config.runtimeDir 覆�
 - 安装过程写 `runtime/.install.lock`（含 pid/时间）；启动发现锁且 pid 不存活 → 清掉重来。
 - 安装失败保留 `install.log`（在 `runtime/`），自检报 `runtime-missing` 并附最后 20 行。
 
-### 4.4 首次安装 UX（M2 形态，见 §14 待确认）
+### 4.4 首次安装 UX（M2 形态，已确认 §14-C）
 
 M2 先做**最小可用**：
 
@@ -169,7 +170,7 @@ M2 先做**最小可用**：
 
 | 项 | 顺序 | 校验 |
 | --- | --- | --- |
-| node | ① `$DSH_HOME/dsh-runtimes/*/dependencies/node/bin/node.exe` ② `ELECTRON_RUN_AS_NODE=1 DSH_NODE_EXECUTABLE` ③ `PATH` 里的 node | `node --version` 且 **major ≥ 22**（hyperframes 要求 `engines.node >= 22`） |
+| node | ① `$DSH_HOME/dsh-runtimes/*/dependencies/node/bin/node.exe` ② `ELECTRON_RUN_AS_NODE=1 DSH_NODE_EXECUTABLE` ③ `PATH` 里的 node | `node --version` 且 **major ≥ 22**（hyperframes 要求 `engines.node >= 22`）。②是 Electron 二进制，**探测与启动都必须带 `ELECTRON_RUN_AS_NODE=1`**，否则会拉起 GUI |
 | pnpm | 托管运行时 `dependencies/pnpm/bin/pnpm.mjs`（用上面的 node 执行） | 文件存在 |
 | Chrome | ① `Config.chromePath` ② `%ProgramFiles%\Google\Chrome\Application\chrome.exe` ③ `%ProgramFiles(x86)%\…` ④ `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe` | `existsSync` + `isFile`；命中后设 `HYPERFRAMES_BROWSER_PATH` |
 | ffmpeg/ffprobe | 运行时里的 `ffmpeg-static` / `ffprobe-static` | 执行 `-version` |
@@ -241,8 +242,8 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
   - `safeTitle`：去 Windows 保留字符（`<>:"/\|?*`）、空白折叠为 `-`、截断 40 字符、空则退回 slug；
   - 同名已存在 → 追加 `-2`、`-3`…，**绝不覆盖**；
   - 失败只记日志，不改变渲染结果；媒体/项目路由**不暴露** `exportDir`。
-- **渲染结果存哪**：建议新增 `renders/index.json`（`{ version, file, bytes, durationSec, width, height, fps, createdAt }`，
-  按版本倒序），**不改 `project.json` schema**（见 §14 待确认）。写入用 `writeFileAtomic`。
+- **渲染结果存哪**（已确认，§14-B）：新增 `renders/index.json`（`{ version, file, bytes, durationSec, width, height, fps, createdAt }`，
+  按版本倒序），**不改 `project.json` schema**。写入用 `writeFileAtomic`。
 
 ## 8. 配置项（M2 新增，写进 INSTALL 配置表）
 
@@ -261,7 +262,7 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | # | 提交 | 内容 | 完成标准 |
 | --- | --- | --- | --- |
 | 0 | `docs: 记录 M2 运行时与 CLI 实测` | 本文件 + `hyperframes render --help` 结论 + 本机清单（node/pnpm/chrome/ffmpeg 实际路径，脱敏） | 文档合入 |
-| 1 | `feat: 增加运行时探测与渲染参数构造` | `locate.ts`、`env.ts`、`args.ts` + 纯函数测试（探测顺序、env 白名单、argv 形状、node≥22 拒绝） | 无副作用、可在 CI 跑 |
+| 1 | `feat: 增加运行时探测与渲染参数构造` | `locate.ts`、`env.ts`、`args.ts` + 纯函数测试（探测顺序、env 白名单、argv 形状、node≥22 拒绝） | 无副作用、可在 CI 跑 | ✅ 已完成（27 项用例，测试 100→127） |
 | 2 | `feat: 增加运行时供给与校验` | `supply.ts`：安装、二次重跑、二进制校验、`supplied.json`、锁与日志；`GET /runtime` | 本机从零装一次成功；重复调用秒返回；删二进制后能自愈 |
 | 3 | `feat: 增加渲染任务服务` | `jobs.ts`：状态机、并发 1、队列、超时；`render/routes.ts` 三个接口 | 用 fake CLI 跑通 成功/失败/超时/忙碌 409 |
 | 4 | `feat: 增加进度解析与取消清理` | `progress.ts`、`process.ts`、孤儿扫描、卸载清理 | fake CLI 打印真实格式进度；取消后无进程与 `.tmp` |
@@ -325,7 +326,7 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | 6 客户端 UI | 0.6 |
 | 7 实机验收 + 文档 | 0.4 |
 
-## 14. 已确认决定 / 待确认
+## 14. 已确认决定
 
 **已确认（来自 PLAN / M0-FINDINGS，不再讨论）**
 
@@ -340,15 +341,15 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | 环境变量 | 显式最小 env；剔除 `ELECTRON_*` / `NODE_OPTIONS` 等继承变量 |
 | 路由安全 | 沿用单一 token；只暴露只读文件 + 本插件的渲染控制接口 |
 
-**待确认（开工前只需拍这 3 个）**
+**2026-11-19 拍板（原"待确认"3 项，按建议采纳）**
 
-| # | 决定 | 默认建议 | 影响 |
+| # | 决定 | 结论 | 落地位置 |
 | --- | --- | --- | --- |
-| A | 进度通道 | **HTTP 轮询（1 s）** | 轮询最省事；SSE/WS 需先验证 `webServer.registerUpgrade` |
-| B | 渲染结果存哪 | **新增 `renders/index.json`**，`project.json` 保持 v1 | 若进 `project.json` 需 schemaVersion→2 + migrate + 全部测试更新 |
-| C | 首次安装 UX | **M2 最小可用**：按钮 + 状态轮询 + 失败码，无百分比 | 更完整 UX（进度/预估/断点）留到 M4 |
+| A | 进度通道 | **HTTP 轮询，1 s 间隔**；不做 SSE/WS（不引入 `registerUpgrade` 的不确定性） | §3.3 三个路由 + 步骤 6 UI 轮询 |
+| B | 渲染结果存哪 | **新增 `renders/index.json`**（倒序数组），`project.json` **保持 schemaVersion 1**，不写 migrate | §7 产物、步骤 5 |
+| C | 首次安装 UX | **M2 最小可用**：`安装运行时` 按钮 + 状态轮询 + 失败码 + `install.log` 入口；百分比/预估/断点留 M4 | §4.4、步骤 2 + 6 |
 
-三项都不改变上面的目录与步骤，只影响 §3.3、§7、§4.4 的细节；确认后即可从步骤 1 开工。
+三项均已并入上面的正文，不再有待确认项。
 
 ## 15. 开工前的一次性核对（步骤 0 内容预告）
 

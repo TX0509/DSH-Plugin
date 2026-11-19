@@ -51,6 +51,20 @@ export {
 } from './projects/store'
 export { runSelfcheck } from './selfcheck'
 export { SELFCHECK_REPORT, readSelfcheckReport, writeSelfcheckReport } from './selfcheck-report'
+// M2 render pipeline: pure helpers (probing, child env, argv). The side-effecting
+// parts (install, jobs, routes) are wired in later steps.
+export {
+  MIN_NODE_MAJOR,
+  chromeCandidates,
+  listRuntimeDependencyDirs,
+  majorOf,
+  nodeCandidates,
+  parseVersion,
+  pickChrome,
+  pickNode,
+} from './runtime/locate'
+export { buildRenderEnv } from './runtime/env'
+export { RENDER_QUALITIES, RESOLUTION_BY_ASPECT, buildRenderArgs } from './render/args'
 
 const MIME: Record<string, string> = {
   '.mp4': 'video/mp4',

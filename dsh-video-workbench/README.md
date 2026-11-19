@@ -136,9 +136,9 @@ Host 侧已在运行中的 Desktop 上验证（修改 profile 配置会热重载
 
 剩余（客户端 bundle 只在启动时合成，需要**完全退出并重新打开 DSH**）：
 
-> 注意：2026-11-19 修复数据损坏后，desktop profile 已重置——插件未安装、profile 里也没有
-> `projectsRoot` 配置。重启验收前先完全退出 DSH，执行 `node scripts/install.mjs`，
-> 并按 [INSTALL.md](INSTALL.md)「配置」补配置。
+> 注意：2026-11-19 修复数据损坏后，desktop profile 已重置——插件尚未安装；`projectsRoot` /
+> `exportDir` 已补进 profile 的 `cordis.patch.yml`（插件未安装时该条会被跳过）。重启验收前先
+> 完全退出 DSH，执行 `node scripts/install.mjs`，再重启。
 
 1. 重启后等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔ 且退出码 0；
 2. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、能播放与拖动、

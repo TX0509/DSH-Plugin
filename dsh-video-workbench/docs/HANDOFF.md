@@ -172,9 +172,11 @@ Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发�
 **剩余：客户端半区完全重启验收**（本轮会话运行在 DSH 内部，重启会终止会话，因此未执行）。
 
 ⚠️ 环境现状（2026-11-19 修复数据损坏后）：desktop profile 已被重置——插件**未安装**
-（`node scripts/install.mjs --check` 报链接/bundles/dependencies 都缺失），`cordis.patch.yml`
-也没有 `video-workbench` 配置，`selfcheck.json` 不存在。重启验收前先：
-完全退出 DSH → `node scripts/install.mjs` → 按 [INSTALL.md](../INSTALL.md)「配置」补 `projectsRoot` / `exportDir`。
+（`node scripts/install.mjs --check` 报链接/bundles/dependencies 都缺失），`selfcheck.json` 不存在。
+2026-11-19 已手工补上 `cordis.patch.yml` 的 `video-workbench` 配置（`projectsRoot` / `exportDir`，
+备份 `cordis.patch.yml.bak-video-workbench-20261119-075340`）；插件行还不存在，所以该配置当前
+会被 loader「目标不存在，跳过」忽略。重启验收前先：完全退出 DSH → `node scripts/install.mjs`，
+然后重启（配置应随插件行一起生效，若被应用回写覆盖，按 [INSTALL.md](../INSTALL.md)「配置」重加）。
 
 1. 完全退出 DSH（含托盘图标），重新打开；
 2. 等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔、退出码 0；

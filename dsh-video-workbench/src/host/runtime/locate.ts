@@ -161,6 +161,18 @@ export function pickChrome(candidates: Candidate[], exists: (candidatePath: stri
   return pick(candidates, (candidate) => (exists(candidate.path) ? undefined : '文件不存在'))
 }
 
+/**
+ * The managed pnpm script that ships next to the managed node:
+ * `<dependencies>/node/bin/node` → `<dependencies>/pnpm/bin/pnpm.mjs`.
+ * Returns undefined for node candidates that do not come from a managed runtime.
+ */
+export function pnpmScriptFor(nodePath: string): string | undefined {
+  // <dependencies>/node/bin/<node> → <dependencies>
+  const dependencies = path.resolve(nodePath, '..', '..', '..')
+  const script = path.join(dependencies, 'pnpm', 'bin', 'pnpm.mjs')
+  return fs.existsSync(script) ? script : undefined
+}
+
 /** Shared selection loop: first candidate without a rejection reason wins. */
 function pick(candidates: Candidate[], reject: (candidate: Candidate) => string | undefined): Picked {
   const rejected: Rejection[] = []

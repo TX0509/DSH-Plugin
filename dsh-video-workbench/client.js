@@ -43,8 +43,12 @@ var React = __toESM(require("react"), 1);
 
 // src/shared/routes.ts
 var TOKEN_GLOBAL = "__DSH_VIDEO_WORKBENCH__";
-var PING_PATH = "/api/video-workbench/ping";
 var MEDIA_PATH = "/api/video-workbench/media";
+var PROJECTS_PATH = "/api/video-workbench/projects";
+var RUNTIME_PATH = "/api/video-workbench/runtime";
+var RUNTIME_INSTALL_PATH = "/api/video-workbench/runtime/install";
+var RENDER_PATH = "/api/video-workbench/render";
+var PROJECTS_LIST_PATH = "/api/video-workbench/projects-list";
 
 // src/client/adapters/context.ts
 function readToken() {
@@ -94,7 +98,12 @@ var mediaUrl = (name) => hostUrl(MEDIA_PATH, {
   path: name,
   t: readToken()
 });
+var projectFileUrl = (relative) => hostUrl(PROJECTS_PATH, {
+  path: relative,
+  t: readToken()
+});
 var maskToken = (href) => href.replace(/([?&]t=)[^&]*/u, "$1***");
+var withToken = (pathname) => hostUrl(pathname, { t: readToken() });
 var CSS = [
   ".dshvw-trigger{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
   ".dshvw-trigger:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}",
@@ -107,12 +116,38 @@ var CSS = [
   ".dshvw-close{height:28px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}",
   ".dshvw-close:hover{background:var(--dsw-alias-interactive-bg-hover)}",
   ".dshvw-close:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}",
+  ".dshvw-close:disabled{opacity:.5;cursor:default}",
   ".dshvw-video{width:100%;height:auto;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}",
   ".dshvw-error-row{display:flex;gap:8px;align-items:flex-start}",
   ".dshvw-error{flex:1;margin:0;padding:8px;border-radius:8px;border:1px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font-size:12px}",
   ".dshvw-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
-  ".dshvw-diag{margin:0;padding:8px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-family:var(--dsh-code-font, monospace);font-size:11px;white-space:pre-wrap;word-break:break-all}"
+  ".dshvw-diag{margin:0;padding:8px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-family:var(--dsh-code-font, monospace);font-size:11px;white-space:pre-wrap;word-break:break-all}",
+  ".dshvw-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary)}",
+  ".dshvw-row-label{color:var(--dsw-alias-label-primary)}",
+  ".dshvw-bar{position:relative;flex:1;min-width:120px;height:6px;border-radius:999px;background:var(--dsw-alias-bg-layer-3);overflow:hidden}",
+  ".dshvw-bar-fill{height:100%;background:var(--dsw-alias-brand-primary);transition:width .3s ease}",
+  ".dshvw-select{max-width:320px;height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px}"
 ].join("\n");
+async function getJson(url, init) {
+  const response = await fetch(url, init);
+  if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+  return await response.json();
+}
+var PHASE_LABEL = {
+  preparing: "\u51C6\u5907\u4E2D",
+  capturing: "\u6E32\u67D3\u5E27",
+  encoding: "\u7F16\u7801",
+  assembling: "\u5408\u6210",
+  done: "\u5B8C\u6210"
+};
+var STATUS_LABEL = {
+  queued: "\u6392\u961F\u4E2D",
+  running: "\u6E32\u67D3\u4E2D",
+  succeeded: "\u5DF2\u5B8C\u6210",
+  failed: "\u5931\u8D25",
+  cancelled: "\u5DF2\u53D6\u6D88",
+  timedOut: "\u8D85\u65F6"
+};
 function Trigger() {
   return h("button", {
     type: "button",
@@ -125,11 +160,13 @@ function Trigger() {
 var FOCUSABLE = 'button, [href], input, select, textarea, video, [tabindex]:not([tabindex="-1"])';
 function Panel() {
   const [open, setOpen] = React.useState(false);
-  const [diag, setDiag] = React.useState("\u68C0\u6D4B\u4E2D\u2026");
-  const [time, setTime] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
+  const [runtime, setRuntime] = React.useState(void 0);
+  const [projects, setProjects] = React.useState(void 0);
+  const [projectId, setProjectId] = React.useState("");
+  const [job, setJob] = React.useState(void 0);
+  const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
-  const [attempt, setAttempt] = React.useState(0);
+  const [probe, setProbe] = React.useState(void 0);
   const closeRef = React.useRef(null);
   const cardRef = React.useRef(null);
   const previousFocus = React.useRef(null);
@@ -186,57 +223,109 @@ function Panel() {
   React.useEffect(() => {
     if (!open) return void 0;
     let cancelled = false;
-    setDiag("\u68C0\u6D4B\u4E2D\u2026");
     setError("");
-    setTime(0);
-    setDuration(0);
-    const run = async () => {
-      const token = readToken();
-      if (token === "") {
-        if (!cancelled) {
-          setDiag(JSON.stringify({ tokenPresent: false }, null, 2));
-          setError("\u672A\u83B7\u53D6\u5230\u8BBF\u95EE\u4EE4\u724C\uFF1A\u8BF7\u5B8C\u5168\u9000\u51FA\u5E76\u91CD\u65B0\u6253\u5F00 DSH \u540E\u91CD\u8BD5\u3002");
-        }
-        return;
-      }
+    const token = readToken();
+    if (token === "") {
+      setError("\u672A\u83B7\u53D6\u5230\u8BBF\u95EE\u4EE4\u724C\uFF1A\u8BF7\u5B8C\u5168\u9000\u51FA\u5E76\u91CD\u65B0\u6253\u5F00 DSH \u540E\u91CD\u8BD5\u3002");
+      return void 0;
+    }
+    void (async () => {
       try {
-        const pingResponse = await fetch(hostUrl(PING_PATH, { t: token }));
-        const ping = await pingResponse.json();
-        const probe = await fetch(mediaUrl(SAMPLE_MEDIA), { headers: { Range: "bytes=0-99" } });
+        const [runtimeView, projectList] = await Promise.all([
+          getJson(withToken(RUNTIME_PATH)),
+          getJson(withToken(PROJECTS_LIST_PATH))
+        ]);
         if (cancelled) return;
-        setDiag(JSON.stringify({
-          origin: window.location.origin,
-          baseURI: document.baseURI,
-          mediaUrl: maskToken(mediaUrl(SAMPLE_MEDIA)),
-          tokenPresent: true,
-          ping,
-          media: {
-            status: probe.status,
-            contentType: probe.headers.get("content-type"),
-            contentRange: probe.headers.get("content-range")
-          }
-        }, null, 2));
-        if (probe.status !== 206) {
-          fail(`\u5A92\u4F53\u8BF7\u6C42\u8FD4\u56DE ${String(probe.status)}\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u662F\u5426\u5B58\u5728\u3002`);
+        setRuntime(runtimeView);
+        setProjects(projectList);
+        if (projectList.projects.length > 0) {
+          setProjectId((current) => current === "" ? projectList.projects[0].id : current);
+        }
+        try {
+          const head = await fetch(mediaUrl(SAMPLE_MEDIA), { headers: { Range: "bytes=0-99" } });
+          if (!cancelled) setProbe({ status: head.status, contentRange: head.headers.get("content-range") });
+        } catch {
+          if (!cancelled) setProbe({ status: 0, contentRange: null });
         }
       } catch (failure) {
-        if (!cancelled) {
-          setDiag(JSON.stringify({ tokenPresent: true, error: String(failure) }, null, 2));
-          fail("\u8BF7\u6C42\u5931\u8D25\uFF1A\u8BF7\u786E\u8BA4\u6587\u4EF6\u5B58\u5728\u4E14 DSH \u5DF2\u91CD\u542F\u3002");
-        }
+        if (!cancelled) fail(`\u52A0\u8F7D\u5931\u8D25\uFF1A${String(failure)}\u3002\u8BF7\u786E\u8BA4 DSH \u5DF2\u5B8C\u5168\u91CD\u542F\u3002`);
       }
-    };
-    void run();
+    })();
     return () => {
       cancelled = true;
     };
-  }, [open, attempt]);
-  const retry = () => {
-    closeRef.current?.focus();
+  }, [open]);
+  React.useEffect(() => {
+    if (!open || job === void 0) return void 0;
+    if (job.status !== "queued" && job.status !== "running") return void 0;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const next = await getJson(withToken(`${RENDER_PATH}/${job.id}`));
+          if (!cancelled) setJob(next.job);
+        } catch {
+        }
+      })();
+    }, 1e3);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [open, job?.id, job?.status]);
+  const installRuntime = async () => {
+    setBusy(true);
     setError("");
-    setAttempt((value) => value + 1);
+    try {
+      const started = await getJson(withToken(RUNTIME_INSTALL_PATH), { method: "POST" });
+      setRuntime(started);
+      const poll = setInterval(() => {
+        void (async () => {
+          try {
+            const next = await getJson(withToken(RUNTIME_PATH));
+            setRuntime(next);
+            if (next.state !== "installing") {
+              clearInterval(poll);
+              setBusy(false);
+            }
+          } catch {
+          }
+        })();
+      }, 2e3);
+    } catch (failure) {
+      setBusy(false);
+      fail(`\u5B89\u88C5\u8BF7\u6C42\u5931\u8D25\uFF1A${String(failure)}`);
+    }
+  };
+  const startRender = async () => {
+    setError("");
+    setJob(void 0);
+    try {
+      const started = await getJson(withToken(RENDER_PATH), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId })
+      });
+      setJob(started.job);
+    } catch (failure) {
+      fail(`\u65E0\u6CD5\u5F00\u59CB\u6E32\u67D3\uFF1A${String(failure)}`);
+    }
+  };
+  const cancelRender = async () => {
+    if (job === void 0) return;
+    try {
+      const response = await getJson(withToken(`${RENDER_PATH}/${job.id}`), { method: "DELETE" });
+      setJob(response.job);
+    } catch (failure) {
+      fail(`\u53D6\u6D88\u5931\u8D25\uFF1A${String(failure)}`);
+    }
   };
   if (!open) return null;
+  const selected = projects?.projects.find((project) => project.id === projectId);
+  const runtimeReady = runtime?.state === "ready";
+  const rendering = job !== void 0 && (job.status === "queued" || job.status === "running");
+  const finished = job !== void 0 && job.status === "succeeded" && job.output !== void 0;
+  const videoSrc = finished && job?.output !== void 0 ? projectFileUrl(`${projectId}/renders/v${String(job.output.version)}.mp4`) : mediaUrl(SAMPLE_MEDIA);
   return h("div", {
     className: "dshvw-backdrop",
     role: "presentation",
@@ -253,7 +342,7 @@ function Panel() {
     h("header", { className: "dshvw-head", key: "head" }, [
       h("div", { key: "title" }, [
         h("h2", { className: "dshvw-title", key: "h" }, "\u89C6\u9891\u5DE5\u4F5C\u53F0"),
-        h("p", { className: "dshvw-sub", key: "p" }, "\u81EA\u68C0\uFF1A\u8DEF\u7531\u6302\u8F7D\u3001\u8BBF\u95EE\u4EE4\u724C\u4E0E Range \u64AD\u653E")
+        h("p", { className: "dshvw-sub", key: "p" }, "\u6E32\u67D3\u5F53\u524D\u9879\u76EE\u5E76\u9884\u89C8\u6210\u7247")
       ]),
       h("button", {
         key: "close",
@@ -263,30 +352,85 @@ function Panel() {
         onClick: () => setOpen(false)
       }, "\u5173\u95ED (Esc)")
     ]),
-    error === "" ? null : h("div", { className: "dshvw-error-row", key: "error" }, [
-      h("p", { className: "dshvw-error", role: "alert", key: "text" }, error),
-      h("button", {
-        key: "retry",
+    h("div", { className: "dshvw-row", key: "runtime" }, [
+      h("span", { key: "label", className: "dshvw-row-label" }, "\u6E32\u67D3\u8FD0\u884C\u65F6"),
+      h("span", { key: "state" }, runtime === void 0 ? "\u68C0\u6D4B\u4E2D\u2026" : runtime.state === "ready" ? `\u5DF2\u5C31\u7EEA\uFF08hyperframes ${runtime.versions?.hyperframes ?? "?"}\uFF09` : runtime.state === "installing" ? "\u6B63\u5728\u5B89\u88C5\u2026\uFF08\u9996\u6B21\u7EA6 2\u201310 \u5206\u949F\uFF09" : `\u672A\u5B89\u88C5${runtime.lastError === void 0 ? "" : `\uFF08${runtime.lastError}\uFF09`}`),
+      runtime?.browser == null ? null : h("span", { key: "browser" }, `\u6D4F\u89C8\u5668\uFF1A${runtime.browser.source}`),
+      runtime?.state === "missing" ? h("button", {
+        key: "install",
         type: "button",
         className: "dshvw-close",
-        onClick: retry
-      }, "\u91CD\u8BD5")
+        disabled: busy,
+        onClick: () => {
+          void installRuntime();
+        }
+      }, busy ? "\u5B89\u88C5\u4E2D\u2026" : "\u5B89\u88C5\u8FD0\u884C\u65F6") : null
     ]),
-    error === "" ? h("video", {
-      key: `video-${attempt}`,
+    h("div", { className: "dshvw-row", key: "projects" }, [
+      h("span", { key: "label", className: "dshvw-row-label" }, "\u9879\u76EE"),
+      projects === void 0 ? h("span", { key: "loading" }, "\u52A0\u8F7D\u4E2D\u2026") : projects.state !== "ready" ? h("span", { key: "unset" }, "\u9879\u76EE\u529F\u80FD\u672A\u542F\u7528\uFF08\u672A\u914D\u7F6E projectsRoot\uFF09") : projects.projects.length === 0 ? h("span", { key: "empty" }, "\u6682\u65E0\u9879\u76EE") : h("select", {
+        key: "select",
+        className: "dshvw-select",
+        value: projectId,
+        onChange: (event) => setProjectId(event.target.value)
+      }, projects.projects.map((project) => h(
+        "option",
+        { key: project.id, value: project.id },
+        `${project.title}\uFF08${String(project.scenes)} \u5206\u955C\uFF09`
+      ))),
+      h("button", {
+        key: "render",
+        type: "button",
+        className: "dshvw-close",
+        disabled: !runtimeReady || rendering || projectId === "",
+        onClick: () => {
+          void startRender();
+        }
+      }, rendering ? "\u6E32\u67D3\u4E2D\u2026" : "\u6E32\u67D3"),
+      rendering ? h("button", {
+        key: "cancel",
+        type: "button",
+        className: "dshvw-close",
+        onClick: () => {
+          void cancelRender();
+        }
+      }, "\u53D6\u6D88") : null
+    ]),
+    job === void 0 ? null : h("div", { className: "dshvw-row", key: "progress" }, [
+      h(
+        "span",
+        { key: "status", className: "dshvw-row-label" },
+        `${STATUS_LABEL[job.status] ?? job.status}${job.phase === "queued" ? "" : ` \xB7 ${PHASE_LABEL[job.phase] ?? job.phase}`}`
+      ),
+      h(
+        "span",
+        { key: "bar", className: "dshvw-bar" },
+        h("span", { className: "dshvw-bar-fill", style: { width: `${String(job.percent)}%`, display: "block" } })
+      ),
+      h("span", { key: "percent" }, job.frames === void 0 ? `${String(job.percent)}%` : `${String(job.percent)}%\uFF08${String(job.frames)}/${String(job.totalFrames ?? "?")} \u5E27\uFF09`),
+      job.error === void 0 ? null : h("span", { key: "error", role: "alert" }, `\u9519\u8BEF\uFF1A${job.error}`)
+    ]),
+    error === "" ? null : h("div", { className: "dshvw-error-row", key: "error" }, [
+      h("p", { className: "dshvw-error", role: "alert", key: "text" }, error)
+    ]),
+    h("video", {
+      key: `video-${videoSrc}`,
       className: "dshvw-video",
-      src: mediaUrl(SAMPLE_MEDIA),
+      src: videoSrc,
       controls: true,
       preload: "metadata",
-      onLoadedMetadata: (event) => setDuration(event.currentTarget.duration || 0),
-      onTimeUpdate: (event) => setTime(event.currentTarget.currentTime || 0),
       onError: () => fail("\u89C6\u9891\u52A0\u8F7D\u5931\u8D25\uFF1A\u8BF7\u786E\u8BA4\u6587\u4EF6\u5B58\u5728\u4E14\u8BBF\u95EE\u4EE4\u724C\u6709\u6548\u3002")
-    }) : null,
-    h("div", { className: "dshvw-meta", key: "meta" }, error === "" ? [
-      h("span", { key: "t" }, `\u5F53\u524D ${time.toFixed(2)}s`),
-      h("span", { key: "d" }, `\u65F6\u957F ${duration.toFixed(2)}s`)
-    ] : [h("span", { key: "unavailable" }, "\u5A92\u4F53\u4E0D\u53EF\u7528")]),
-    h("pre", { className: "dshvw-diag", key: "diag" }, diag)
+    }),
+    h("div", { className: "dshvw-meta", key: "meta" }, [
+      h("span", { key: "source" }, finished ? `\u6210\u7247\uFF1Av${String(job?.output?.version)}\uFF08${String(selected?.title ?? projectId)}\uFF09` : "\u9884\u89C8\uFF1A\u793A\u4F8B\u7247 test.mp4"),
+      probe === void 0 ? null : h("span", { key: "probe" }, `\u5A92\u4F53 206 \u63A2\u6D4B\uFF1A${String(probe.status)}`)
+    ]),
+    h("pre", { className: "dshvw-diag", key: "diag" }, JSON.stringify({
+      mediaUrl: maskToken(mediaUrl(SAMPLE_MEDIA)),
+      runtime: runtime?.state ?? "unknown",
+      projects: projects?.projects.length ?? 0,
+      job: job === void 0 ? null : { id: job.id, status: job.status, percent: job.percent }
+    }, null, 2))
   ]));
 }
 var index_default = {

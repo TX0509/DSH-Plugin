@@ -9,7 +9,11 @@ import type { HostContext, IndexInjection } from '../shared/dsh'
 import {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_LIST_PATH,
   PROJECTS_PATH,
+  RENDER_PATH,
+  RUNTIME_INSTALL_PATH,
+  RUNTIME_PATH,
   SELFCHECK_PATH,
   TOKEN_GLOBAL,
   TOKEN_HEADER,
@@ -18,9 +22,23 @@ import {
 import { hostLogger, redactPath } from './adapters/logger'
 import { defer } from './adapters/lifecycle'
 import { withWebServer } from './adapters/web-server'
+import { readToken, sendJson } from './http'
+import { tokenEquals as tokenEqualsImpl } from './index-internal'
 import { contains, isFilesystemRoot, safeResolve } from './paths'
 import type { ProjectsConfig, ProjectsState } from './projects/root'
 import { resolveProjectsRoot } from './projects/root'
+import { buildRenderEnv } from './runtime/env'
+import { chromeCandidates, pickChrome } from './runtime/locate'
+import { createProjectsListHandler } from './projects/routes'
+import { createRenderHandler } from './render/routes'
+import { createJobManager } from './render/jobs'
+import type { RenderQuality } from './render/args'
+import { reapOrphans } from './render/process'
+import { createRuntimeInstallHandler, createRuntimeStateHandler } from './runtime/routes'
+import { describeRuntime } from './runtime/status'
+import type { RuntimeStatusView } from './runtime/status'
+import { installRuntime, readSupplied, resolveInstallTools, runtimeState } from './runtime/supply'
+import type { RuntimeProbe } from './selfcheck'
 import { runSelfcheck } from './selfcheck'
 import { readSelfcheckReport, writeSelfcheckReport } from './selfcheck-report'
 
@@ -28,7 +46,11 @@ import { readSelfcheckReport, writeSelfcheckReport } from './selfcheck-report'
 export {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_LIST_PATH,
   PROJECTS_PATH,
+  RENDER_PATH,
+  RUNTIME_INSTALL_PATH,
+  RUNTIME_PATH,
   SELFCHECK_PATH,
   TOKEN_GLOBAL,
 } from '../shared/routes'
@@ -64,6 +86,40 @@ export {
   pickNode,
 } from './runtime/locate'
 export { buildRenderEnv } from './runtime/env'
+export { createJobManager, parseFfprobeJson } from './render/jobs'
+export { COMPOSITION_FILE, SIZE_BY_ASPECT, scaffoldCompositionHtml } from './render/scaffold'
+export { createRenderHandler } from './render/routes'
+export { createProgressParser, parseProgressLine, stripAnsi } from './render/progress'
+export {
+  expiredRenders,
+  exportFileName,
+  nextRenderVersion,
+  renderFileName,
+  renderVersionOf,
+  safeTitle,
+  tempRenderPath,
+} from './render/outputs'
+export {
+  isPidAlive,
+  jobRegistryPath,
+  killTree,
+  readJobRegistries,
+  reapOrphans,
+  removeJobRegistry,
+  writeJobRegistry,
+} from './render/process'
+export {
+  ALLOW_BUILD_PACKAGES,
+  RUNTIME_VERSIONS,
+  installCommands,
+  installRuntime,
+  readSupplied,
+  resolveInstallTools,
+  runtimePaths,
+  runtimeState,
+} from './runtime/supply'
+export { describeRuntime } from './runtime/status'
+export { createRuntimeInstallHandler, createRuntimeStateHandler } from './runtime/routes'
 export { RENDER_QUALITIES, RESOLUTION_BY_ASPECT, buildRenderArgs } from './render/args'
 
 const MIME: Record<string, string> = {
@@ -103,6 +159,18 @@ export interface PluginConfig {
   /** Media file the probe reads, relative to mediaRoot (default `test.mp4`). */
   selfcheckMediaPath?: string
   requireToken?: boolean
+  /** Render runtime install directory (default `$DSH_HOME/cache/dsh-video-workbench/runtime`). */
+  runtimeDir?: string
+  /** Chrome executable; overrides the probing chain. */
+  chromePath?: string
+  /** Single render timeout in ms (default 600000). */
+  renderTimeoutMs?: number
+  /** hyperframes workers (default 2). */
+  renderWorkers?: number
+  /** `draft` / `standard` / `high` (default standard). */
+  renderQuality?: string
+  /** Newest renders kept per project (default 5). */
+  keepRenders?: number
 }
 
 /** `ready` = usable; `unset` = not configured; `invalid` = configured but unusable. */
@@ -130,6 +198,8 @@ interface SelfcheckRouteOptions {
   projects: ProjectsConfig
   /** Same sample the startup self-check probes; must not drift from it. */
   mediaProbePath?: string
+  /** Runtime state is read per request so an install finishes visibly. */
+  runtime(): RuntimeProbe
 }
 
 type RangeBounds = { start: number; end: number }
@@ -188,11 +258,7 @@ export function parseRange(header: string | undefined, size: number): ParsedRang
 }
 
 export function tokenEquals(supplied: string | undefined, expected: string): boolean {
-  if (typeof supplied !== 'string' || typeof expected !== 'string') return false
-  if (supplied.length === 0 || expected.length === 0) return false
-  const left = Buffer.from(supplied)
-  const right = Buffer.from(expected)
-  return left.length === right.length && timingSafeEqual(left, right)
+  return tokenEqualsImpl(supplied, expected)
 }
 
 /** `If-None-Match` may carry a weak prefix or a list; compare each member. */
@@ -205,25 +271,6 @@ export function matchesEtag(header: string | undefined, etag: string): boolean {
     const member = part.trim()
     return member === etag || member === `W/${etag}`
   })
-}
-
-function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  const text = JSON.stringify(body, null, 2)
-  response.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-    'content-length': Buffer.byteLength(text),
-  })
-  response.end(text)
-}
-
-function readToken(request: IncomingMessage): string | undefined {
-  const url = new URL(request.url ?? '/', 'http://placeholder.invalid')
-  const query = url.searchParams.get('t')
-  if (typeof query === 'string' && query.length > 0) return query
-  const header = request.headers[TOKEN_HEADER]
-  if (typeof header === 'string' && header.length > 0) return header
-  return undefined
 }
 
 function statFile(candidate: string): fs.Stats | undefined {
@@ -415,7 +462,7 @@ function createSelfcheckHandler(options: SelfcheckRouteOptions): (request: Incom
       if (!response.writableEnded) controller.abort()
     }
     response.once('close', abort)
-    void runSelfcheck({ ...options, signal: controller.signal })
+    void runSelfcheck({ ...options, runtime: options.runtime(), signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return
         sendJson(response, 200, result)
@@ -457,7 +504,39 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
     && config.selfcheckMediaPath.trim().length > 0
     ? config.selfcheckMediaPath.trim()
     : undefined
+  const runtimeDir = typeof config.runtimeDir === 'string' && config.runtimeDir.trim().length > 0
+    ? path.resolve(config.runtimeDir.trim())
+    : path.join(dataDir, 'runtime')
+  const chromePick = pickChrome(
+    chromeCandidates({ configured: config.chromePath, env: process.env }),
+    (candidatePath) => {
+      try {
+        return fs.statSync(candidatePath).isFile()
+      } catch {
+        return false
+      }
+    },
+  )
+  const browserSource = chromePick.chosen?.source
+  if (browserSource === undefined) {
+    logger.error('[video-workbench] 未找到 Chrome：渲染功能需要 Chrome，或配置 chromePath')
+  }
   const requireToken = config.requireToken !== false
+  const renderTimeoutMs = typeof config.renderTimeoutMs === 'number'
+    && Number.isFinite(config.renderTimeoutMs) && config.renderTimeoutMs >= 1000
+    ? Math.floor(config.renderTimeoutMs)
+    : 10 * 60 * 1000
+  const renderWorkers = typeof config.renderWorkers === 'number'
+    && Number.isInteger(config.renderWorkers) && config.renderWorkers >= 1 && config.renderWorkers <= 8
+    ? config.renderWorkers
+    : 2
+  const renderQuality: RenderQuality = config.renderQuality === 'draft' || config.renderQuality === 'high'
+    ? config.renderQuality
+    : 'standard'
+  const keepRenders = typeof config.keepRenders === 'number'
+    && Number.isInteger(config.keepRenders) && config.keepRenders >= 1
+    ? config.keepRenders
+    : 5
   const token = randomBytes(24).toString('base64url')
 
   withWebServer(ctx, (server) => {
@@ -472,6 +551,130 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
     // The page receives the token as a global during index injection; the
     // adapter serves only authenticated owner pages.
     server.onIndexInject(createIndexInjector(token))
+
+    // --- M2: render runtime state, install trigger and self-check probe ------
+    let installing = false
+    let installError: string | undefined
+    const runtimeProbe = (): RuntimeProbe => {
+      const supplied = readSupplied(runtimeDir)
+      return {
+        state: runtimeState(runtimeDir),
+        cliExists: supplied !== undefined && fs.existsSync(supplied.binaries.cli),
+        ffmpegExists: supplied !== undefined && fs.existsSync(supplied.binaries.ffmpeg),
+        ffprobeExists: supplied !== undefined && fs.existsSync(supplied.binaries.ffprobe),
+        ...(browserSource === undefined ? {} : { browser: { source: browserSource } }),
+      }
+    }
+    const runtimeStatus = (): RuntimeStatusView => describeRuntime({
+      runtimeDir,
+      ...(browserSource === undefined ? {} : { browserSource }),
+      installing,
+      ...(installError === undefined ? {} : { lastError: installError }),
+    })
+    const startInstall = (): void => {
+      if (installing) return
+      const tools = resolveInstallTools({
+        dshHome: dshHome(),
+        dshNodeExecutable: process.env.DSH_NODE_EXECUTABLE,
+        pathEnv: process.env.PATH,
+        buildEnv: (nodeBinDir, extra) => buildRenderEnv({
+          baseEnv: process.env,
+          nodeBinDir,
+          ...(extra === undefined ? {} : { extra }),
+        }),
+      })
+      if (tools === undefined) {
+        installError = 'node-not-found'
+        logger.error('[video-workbench] 安装运行时失败：找不到 node ≥22 或托管 pnpm')
+        return
+      }
+      installing = true
+      installError = undefined
+      logger.info(`[video-workbench] 开始安装渲染运行时（node ${tools.nodeVersion}）`)
+      void installRuntime({
+        runtimeDir,
+        nodePath: tools.nodePath,
+        pnpmScriptPath: tools.pnpmScriptPath,
+        env: tools.env,
+      }).then((result) => {
+        if (result.ok) {
+          logger.info(`[video-workbench] 运行时就绪：hyperframes ${result.supplied.versions.hyperframes}`)
+        } else {
+          installError = result.error
+          logger.error(`[video-workbench] 安装运行时失败：${result.error}（日志 ${redactPath(path.join(runtimeDir, 'install.log'))}）`)
+        }
+      }).finally(() => {
+        installing = false
+      })
+    }
+    const runtimeRoutes = { token, requireToken, status: runtimeStatus, startInstall }
+    server.registerRoute({
+      kind: 'exact',
+      path: RUNTIME_PATH,
+      handler: createRuntimeStateHandler(runtimeRoutes),
+    }, 'video-workbench:runtime')
+    server.registerRoute({
+      kind: 'exact',
+      path: RUNTIME_INSTALL_PATH,
+      handler: createRuntimeInstallHandler(runtimeRoutes),
+    }, 'video-workbench:runtime-install')
+
+    // --- M2: render jobs (only when a project root exists) -------------------
+    if (projects.root !== undefined) {
+      // The renderer runs on a real Node (≥22), not on the Electron binary, and
+      // with an explicit minimal env; both come from the same resolver the
+      // install uses.
+      const tools = resolveInstallTools({
+        dshHome: dshHome(),
+        dshNodeExecutable: process.env.DSH_NODE_EXECUTABLE,
+        pathEnv: process.env.PATH,
+        buildEnv: (nodeBinDir, extra) => buildRenderEnv({
+          baseEnv: process.env,
+          nodeBinDir,
+          // hyperframes does not find the system Chrome on Windows; without this
+          // it tries to download a headless shell instead of rendering offline.
+          ...(chromePick.chosen === undefined ? {} : { browserPath: chromePick.chosen.path }),
+          ...(extra === undefined ? {} : { extra }),
+        }),
+      })
+      const jobs = createJobManager({
+        runtimeDir,
+        projectsRoot: projects.root,
+        dataDir,
+        ...(exportDir === undefined ? {} : { exportDir }),
+        timeoutMs: renderTimeoutMs,
+        workers: renderWorkers,
+        quality: renderQuality,
+        keepRenders,
+        logger,
+        ...(tools === undefined ? {} : { nodePath: tools.nodePath, renderEnv: tools.env }),
+        onChange: () => {},
+      })
+      // A crashed DSH may leave a render (and its Chrome trees) behind.
+      void reapOrphans(dataDir).then((reaped) => {
+        if (reaped.killed.length > 0) {
+          logger.info(`[video-workbench] 清理了 ${reaped.killed.length} 个上次遗留的渲染进程`)
+        }
+      }).catch(() => {
+        // Orphan cleanup is best effort.
+      })
+      server.registerRoute({
+        kind: 'prefix',
+        path: RENDER_PATH,
+        handler: createRenderHandler({
+          token,
+          requireToken,
+          start: (projectId) => jobs.start(projectId),
+          get: (id) => jobs.get(id),
+          cancel: (id) => jobs.cancel(id),
+        }),
+      }, 'video-workbench:render')
+      if (typeof ctx.effect === 'function') {
+        ctx.effect(() => () => {
+          void jobs.dispose()
+        }, 'video-workbench:render-jobs')
+      }
+    }
 
     server.registerRoute({
       kind: 'exact',
@@ -512,6 +715,7 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
         mediaRoot,
         projects,
         mediaProbePath: selfcheckMediaPath,
+        runtime: runtimeProbe,
       }),
     }, 'video-workbench:selfcheck')
 
@@ -533,6 +737,7 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
           mediaRoot,
           projects,
           mediaProbePath: selfcheckMediaPath,
+          runtime: runtimeProbe(),
           signal: controller.signal,
         }).then((result) => {
           if (controller.signal.aborted) return

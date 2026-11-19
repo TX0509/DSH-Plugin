@@ -6,6 +6,8 @@ import test from 'node:test'
 import {
   MEDIA_PATH,
   PING_PATH,
+  RUNTIME_INSTALL_PATH,
+  RUNTIME_PATH,
   SELFCHECK_PATH,
   TOKEN_GLOBAL,
   apply,
@@ -98,13 +100,13 @@ test('matchesEtag: accepts exact, weak, listed and wildcard validators', () => {
   assert.equal(matchesEtag('', '"abc"'), false)
 })
 
-test('apply registers both routes and the index injector', () => {
+test('apply registers every route and the index injector', () => {
   const stub = stubContext()
   apply(stub.ctx, { mediaRoot: path.join(process.cwd(), 'media'), selfcheckOnStartup: false })
 
   assert.deepEqual(
     stub.routes.map((route) => [route.kind, route.path]).sort(),
-    [['exact', PING_PATH], ['exact', SELFCHECK_PATH], ['prefix', MEDIA_PATH]].sort(),
+    [['exact', PING_PATH], ['exact', SELFCHECK_PATH], ['exact', RUNTIME_PATH], ['exact', RUNTIME_INSTALL_PATH], ['prefix', MEDIA_PATH]].sort(),
   )
   assert.deepEqual(stub.listeners.map((entry) => entry.name), ['webserver/index-inject'])
   assert.equal(stub.messages.some((message) => message.includes('filesystem root')), false)
@@ -124,7 +126,7 @@ test('apply falls back to a safe root when mediaRoot is a filesystem root', () =
   const stub = stubContext()
   apply(stub.ctx, { mediaRoot: path.parse(process.cwd()).root, selfcheckOnStartup: false })
 
-  assert.equal(stub.routes.length, 3)
+  assert.equal(stub.routes.length, 5)
   const message = stub.messages.find((entry) => entry.includes('filesystem root'))
   assert.ok(message, 'expected a filesystem-root error log')
   // Logs are redacted: the configured and fallback paths appear shortened, and

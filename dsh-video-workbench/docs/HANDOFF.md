@@ -1,7 +1,7 @@
 # 交接文档（HANDOFF）
 
 > 给下一个会话/下一个人的入口。读完这一页就能继续工作，不必翻历史对话。
-> 最后更新：2026-11-19，**M1 已完成并实机验收通过**（版本 `0.1.2`，回归修复待重启复测）；下一步 M2。
+> 最后更新：2026-11-19，**M2 已完成**（版本 `0.2.0`，真实渲染冒烟通过；浮层 UI 待重启确认）；下一步 M3。
 
 ## 1. 这是什么
 
@@ -10,11 +10,11 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M1 完成**（构建、适配层、项目模型与路由、`video_selfcheck`、双端实机验收）；
-  **M2 计划已写好，尚未开工** —— 见 [M2-PLAN.md](M2-PLAN.md)，开工前只需拍板 3 个决定
+- 当前阶段：**M2 完成**（渲染运行时供给、渲染任务/进度/取消/超时、产物保留与导出、浮层渲染 UI）；
+  M2 的执行文档与被推翻的假设见 [M2-PLAN.md](M2-PLAN.md)
 - 已实机验证：DSH Desktop `0.2.2-rc.5` 完全重启后 Host 自检 **5/5** + 客户端半区**全部通过**（2026-11-19）
-- 待办：M2（§7）；Web / macOS 仍未验证
-- 版本：`0.1.2`（0.1.1 的元数据 + 0.1.2 的回归修复；`index.js` / `client.js` 均已变更，待重启复测）；分支 `main`
+- 待办：浮层 UI 实机确认 + M3（素材与配音）；Web / macOS 仍未验证
+- 版本：`0.2.0`（M2；`index.js` / `client.js` 均已变更，需重启验证 UI）；分支 `main`
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.5`（2026-11-19 从 `0.2.2-rc.3` 升级）
 
 ## 2. 一分钟上手
@@ -25,7 +25,7 @@ cd D:\Terry\Code\DSH-Plugin\dsh-video-workbench
 # 构建（源码 src/ → 根目录 index.js / client.js）
 node scripts/build.mjs
 
-# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（127 项）
+# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（158 项）
 node scripts/verify.mjs
 
 # 只跑测试
@@ -56,16 +56,21 @@ dsh-video-workbench/
 ├── src/host/adapters/           # web-server.ts（registerRoute / onIndexInject / getOrigin + owner 过滤）
 │                                # logger.ts（+ redactPath 日志脱敏）、lifecycle.ts（defer + 卸载清理）
 ├── src/host/projects/           # schema.ts（v1 校验）、migrate.ts、store.ts（原子写、slug、CRUD）、root.ts
-├── src/host/selfcheck.ts        # video_selfcheck 的 5 项检查（真实 HTTP 探测、可 abort、skipped 语义）
+├── src/host/selfcheck.ts        # video_selfcheck 的 8 项检查（HTTP 探测 + 运行时/浏览器/ffmpeg）
 ├── src/host/selfcheck-report.ts # 启动自检结果写盘 / 读取（逐项校验）
-├── src/host/runtime/            # M2：locate.ts（node/pnpm/Chrome 探测链）、env.ts（子进程最小 env）
-├── src/host/render/             # M2：args.ts（hyperframes argv 构造）；jobs/progress/outputs 后续步骤补
+├── src/host/http.ts             # sendJson / readToken / rejectRequest（所有路由共用）
+├── src/host/projects/routes.ts  # projects-list 路由
+├── src/host/runtime/            # locate.ts（node/pnpm/Chrome 探测）、env.ts（子进程最小 env）、
+│                                # supply.ts（安装/校验/幂等/锁）、status.ts、routes.ts
+├── src/host/render/             # args.ts（argv）、progress.ts（ANSI + 阶段）、process.ts（进程树/孤儿）、
+│                                # jobs.ts（状态机/队列/超时/产物）、outputs.ts（版本/保留/导出）、
+│                                # scaffold.ts（离线合成脚手架）、routes.ts（渲染三接口）
 ├── src/client/index.tsx         # ▶ 入口、浮层、播放器、错误重试；export default 插件对象
 ├── src/client/adapters/         # slots.ts（entry / overlay）、context.ts（token / baseURL / 样式）
 ├── src/shared/                  # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js         # 构建产物（已提交，首行有生成标记）
-├── scripts/{build,verify,install}.mjs
-├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest,runtime,env,render}.test.mjs   # 127 项
+├── scripts/{build,verify,install,check-selfcheck,render-smoke}.mjs
+├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest,runtime,env,render,supply,render-pipeline}.test.mjs   # 158 项
 ├── docs/{M0-FINDINGS,M1-PLAN,M2-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
@@ -131,6 +136,17 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 17. **日志里的路径要脱敏**：`adapters/logger.ts` 的 `redactPath` 把 home 前缀换成 `~`，其它绝对
     路径只留最后两段（`…\video-projects`）。不要再把 `mediaRoot` / `projectsRoot` 原样打日志。
 
+18. **hyperframes 0.6.33 的渲染契约（实测，M2 踩坑）**：`render <DIR>` 只认 `<DIR>/index.html`
+    （必须是完整文档，根元素带 `data-composition-id` + `data-width/height/duration`；`-c` 只能选 DIR 内文件）；
+    每个合成必须注册 `window.__timelines[id]`，否则渲染器空等 45 秒；CSS 动画会被 css adapter
+    按 `(t - data-start)` 精确 seek（**可用，且不需要 GSAP**）；`setTimeout` 不被虚拟化，别用来做动画；
+    非通用字体会联网抓 Google Fonts，CDN 脚本会被编译期抓取 → 离线合成只能用 `sans-serif` + 本地资源。
+19. **Windows 上必须显式给 Chrome**：hyperframes 不会扫描系统 Chrome，找不到就尝试联网下载；
+    渲染 env 里必须有 `HYPERFRAMES_BROWSER_PATH`（由 `chromePick` 注入）。
+20. **时长精度**：`totalFrames = ceil(duration × fps)`；要 `10.000s` 就必须让 `duration × fps` 是整数。
+21. **临时产物必须带 `.mp4` 后缀**：CLI 按扩展名推断容器，`.vN.mp4.tmp-x` 会直接失败；用 `.vN.tmp-x.mp4`。
+22. **`pnpm add` 的 `ERR_PNPM_IGNORED_BUILDS` 会以 exit 1 结束**：不能只看退出码，最终以「执行二进制
+    `-version`」为准（`supply.ts` 已这样处理）。
 ## 5. 已确认的决定
 
 | 项 | 结论 |
@@ -161,7 +177,7 @@ M1 五个步骤全部完成（提交见 `git log --oneline`）：
 | 4 | `feat: 增加 video_selfcheck` | 5 项检查、`/selfcheck` 路由、`getOrigin()` |
 | 5 | `docs: 更新 M1 验收记录` | README/INSTALL/COMPAT/HANDOFF/M1-PLAN、版本 0.1.0、启动自检报告 |
 
-自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、127 项测试）。
+自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、158 项测试）。
 
 ### 2026-11-19 数据完整性修复（M1 之后、客户端重启验收之前）
 
@@ -176,7 +192,7 @@ v0.1.0 接入客户端时出现 DSH 客户端数据损坏（已由用户修复�
 | 写 `project.json` 失败会留下空项目目录；`writeProject` 不建子目录 | 抽 `createProjectLayout` / `persistProject`，失败只清理本次新建的目录 | `writeProject` 布局与根目录守卫用例 |
 | `install.mjs` 直写 profile `package.json`，可能被截断 | 临时文件 + `rename` 原子写；卸载也读回校验 | `test/install.test.mjs`（临时 `DSH_HOME`：`--check`/`--dry-run`/安装/卸载/路径逃逸） |
 
-测试从 65 项增至 127 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
+测试从 65 项增至 158 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
 项目写入失败路径、manifest 元数据等用例）。
 
 Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发热重载，插件自动跑启动自检）：
@@ -224,18 +240,26 @@ const r = await fetch(`/api/video-workbench/selfcheck?t=${t}`).then((x) => x.jso
 console.table(r.checks); r.ok
 ```
 
-## 7. M2 及之后
+## 7. M2 完成记录与 M3 交接
 
-**M2 渲染管线 → 执行计划见 [M2-PLAN.md](M2-PLAN.md)**（目录、接口/协议、供给命令、渲染参数、进度解析、
-保留与导出、7 个步骤、测试计划、DoD、风险、估时）。开工前：
+**M2 渲染管线已完成（v0.2.0）**，执行细节与被推翻的假设见 [M2-PLAN.md](M2-PLAN.md)。
 
-1. 读 [M0-FINDINGS.md](M0-FINDINGS.md) 里 Chrome / ffmpeg / pnpm `--allow-build` 的结论，别重复踩坑；
-2. 读 M2-PLAN §14，**拍板 3 个待确认项**：进度通道（建议 HTTP 轮询）、渲染结果存哪
-   （建议 `renders/index.json`，不动 schema）、首次安装 UX（建议 M2 只做按钮+状态+失败码）；
-3. 从 M2-PLAN 步骤 1（探测 + env + argv 纯函数）开工，每步一个提交、`verify` 全绿。
+实机结果（2026-11-19）：
 
-M3 素材与配音、M4 Agent 工具主路径、M5 微调工作台、M6 交付打磨仍按
-[PLAN.md](../PLAN.md) 里程碑表推进。
+| 项 | 结果 |
+| --- | --- |
+| 运行时供给 | 从零安装 `hyperframes@0.6.33` + ffmpeg/ffprobe（约 840 MB），`supplied.json` 生成，两个二进制 `-version` 通过 |
+| 渲染 | `node scripts/render-smoke.mjs` → **300/300 帧 · 10.000000s · 1080×1920**，约 13 秒（draft/2 workers） |
+| 产物 | `renders/v1.mp4` + `renders/index.json`（时长/宽高/字节数）+ `exportDir` 副本（`<slug>-<标题>-v1.mp4`） |
+| 取消/超时/孤儿 | 单元与集成用例覆盖（假 CLI + 真实进程树 kill）；启动时清理上次遗留的渲染进程 |
+| 自检 | 8 项：路由/token/media/项目×2 + 运行时/浏览器/ffmpeg |
+
+**剩余一步（需要人做）**：浮层 UI 的实机确认 —— 完全退出并重开 DSH，打开 ▶ 后应能看到
+「安装运行时（已就绪）/ 选项目 / 渲染 / 取消 / 播放成片」，进度从 5% 走到 100%。截图补进 `docs/`。
+
+M3 素材与配音开工前：读 [PLAN.md](../PLAN.md) 的 M3 一行 + [M0-FINDINGS.md](M0-FINDINGS.md)
+的环境变量结论；合成脚手架在 `src/host/render/scaffold.ts`，M3/M4 会把它换成真正的 HyperFrames 模板
+（agent 可整份重写 `<project>/index.html`）。
 
 ## 8. 新会话的第一条命令
 
@@ -262,8 +286,8 @@ Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Ra
   若将来要发布 tgz 并允许他人重建，需要把源码一并纳入。
 - `exportDir` 目前只有配置与日志，写入逻辑在 M2；工作区目录 `D:\Terry\Videos\dsh-video`
   还没在 DSH 里注册成工作区（可选，仅影响浏览体验）。
-- **0.1.2 回归修复仍待客户端实机复测**：`index.js` / `client.js` 都变了（Range 语义、nosniff、
-  客户端改用共享路由常量、面板标题去掉 M0），Host 侧行为已由 127 项测试覆盖；完全重启后
+- **0.2.0（M2）浮层 UI 仍待实机确认**：`index.js` / `client.js` 都变了（渲染 UI、Range 语义、nosniff、
+  客户端改用共享路由常量、面板标题去掉 M0），Host 侧行为已由 158 项测试覆盖；完全重启后
   请再跑一次 `node scripts/check-selfcheck.mjs` 并点开 ▶ 复看一遍。
 - 未做的低优先项：`createProject` 并发同名竞态（`listProjects` 轮询时可能短暂看到半个项目）、
   项目 `project.json` 未知字段静默忽略（有意为之，保持向前兼容）、面板文案未接 Client locale。

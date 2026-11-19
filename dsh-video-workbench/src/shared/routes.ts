@@ -21,3 +21,15 @@ export const PROJECTS_PATH = '/api/video-workbench/projects'
 
 /** Exact route running the plugin self-check over real HTTP. */
 export const SELFCHECK_PATH = '/api/video-workbench/selfcheck'
+
+/** Exact route reporting the render runtime supply state (M2). */
+export const RUNTIME_PATH = '/api/video-workbench/runtime'
+
+/** Exact route starting the render runtime install (M2, POST only). */
+export const RUNTIME_INSTALL_PATH = '/api/video-workbench/runtime/install'
+
+/** Prefix route for render control: POST to start, GET/DELETE `/render/<id>` (M2). */
+export const RENDER_PATH = '/api/video-workbench/render'
+
+/** Exact route returning the newest-first project list (M2 UI). */
+export const PROJECTS_LIST_PATH = '/api/video-workbench/projects-list'

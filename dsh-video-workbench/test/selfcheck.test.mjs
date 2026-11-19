@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
 
 import {
   MEDIA_PATH,
@@ -22,7 +22,7 @@ import {
 const FIXED = new Date(2026, 10, 19, 0, 21, 3)
 const ORIGIN = 'http://127.0.0.1:65521'
 const TOKEN = 'selfcheck-token'
-const NAMES = ['routeMounted', 'tokenRequired', 'mediaProbe', 'projectsRootWritable', 'projectsRoute']
+const NAMES = ['routeMounted', 'tokenRequired', 'mediaProbe', 'projectsRootWritable', 'projectsRoute', 'runtimeReady', 'browserFound', 'ffmpegReady']
 
 function json(status, body) {
   return new Response(JSON.stringify(body), {
@@ -77,6 +77,31 @@ function happyHandler(overrides = {}) {
   }
 }
 
+/**
+ * A fake installed runtime + Chrome so `apply()` sees a ready M2 environment on
+ * any machine. Files only matter for `existsSync`; nothing is executed here.
+ */
+function fakeRuntime() {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-runtime-'))
+  const cli = path.join(dir, 'node_modules', 'hyperframes', 'dist', 'cli.js')
+  mkdirSync(path.dirname(cli), { recursive: true })
+  writeFileSync(cli, '', 'utf8')
+  const ffmpeg = path.join(dir, 'ffmpeg.exe')
+  const ffprobe = path.join(dir, 'ffprobe.exe')
+  const chrome = path.join(dir, 'chrome.exe')
+  for (const file of [ffmpeg, ffprobe, chrome]) writeFileSync(file, '', 'utf8')
+  writeFileSync(path.join(dir, 'supplied.json'), JSON.stringify({
+    schemaVersion: 1,
+    installedAt: new Date().toISOString(),
+    versions: { hyperframes: '0.6.33', ffmpegStatic: '5.2.0', ffprobeStatic: '3.1.0' },
+    binaries: { cli, ffmpeg, ffprobe },
+  }, null, 2), 'utf8')
+  return { dir, chrome }
+}
+
+const FAKE_RUNTIME = fakeRuntime()
+after(() => rmSync(FAKE_RUNTIME.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }))
+
 function options(roots, fetchImpl, extra = {}) {
   return {
     getOrigin: () => ORIGIN,
@@ -86,6 +111,14 @@ function options(roots, fetchImpl, extra = {}) {
     projects: resolveProjectsRoot(roots.projectsRoot),
     fetchImpl,
     timeoutMs: 2000,
+    // A ready runtime + a browser so the M2 checks pass unless a test overrides them.
+    runtime: {
+      state: 'ready',
+      cliExists: true,
+      ffmpegExists: true,
+      ffprobeExists: true,
+      browser: { source: 'program-files' },
+    },
     ...extra,
   }
 }
@@ -93,7 +126,7 @@ function options(roots, fetchImpl, extra = {}) {
 function assertShape(result) {
   assert.equal(typeof result.ok, 'boolean')
   assert.ok(Array.isArray(result.checks))
-  assert.equal(result.checks.length, 5)
+  assert.equal(result.checks.length, NAMES.length)
   assert.deepEqual(result.checks.map((check) => check.name), NAMES)
   for (const check of result.checks) {
     assert.equal(typeof check.ok, 'boolean')
@@ -103,7 +136,7 @@ function assertShape(result) {
   assert.equal(result.ok, result.checks.every((check) => check.ok))
 }
 
-test('runSelfcheck: all five checks pass against a healthy plugin', async () => {
+test('runSelfcheck: every check passes against a healthy plugin', async () => {
   const roots = makeRoots()
   try {
     const created = createProject(roots.projectsRoot, { title: '自检项目' }, { now: FIXED })
@@ -111,7 +144,7 @@ test('runSelfcheck: all five checks pass against a healthy plugin', async () => 
     const { fetchImpl, calls } = fetchStub(happyHandler())
     const result = await runSelfcheck(options(roots, fetchImpl))
     assertShape(result)
-    assert.deepEqual(result.checks.map((check) => check.ok), [true, true, true, true, true])
+    assert.deepEqual(result.checks.map((check) => check.ok), NAMES.map(() => true))
     assert.deepEqual(result.checks.map((check) => check.name), NAMES)
 
     const mediaCall = calls.find((entry) => entry.url.pathname === MEDIA_PATH)
@@ -133,10 +166,10 @@ test('runSelfcheck: missing origin fails every HTTP check but not the writable p
     assert.equal(result.ok, false)
     assert.deepEqual(
       result.checks.map((check) => check.ok),
-      [false, false, false, true, true],
-      'the writable probe needs no origin, and the project probe skips when no project exists',
+      [false, false, false, true, true, true, true, true],
+      'the writable probe needs no origin, the project probe skips when no project exists, and the runtime checks are local',
     )
-    assert.match(result.checks[0].detail, /origin/u)
+    assert.match(result.checks.find((check) => check.name === 'routeMounted').detail, /origin/u)
   } finally {
     removeRoots(roots.mediaRoot, roots.projectsRoot)
   }
@@ -152,10 +185,11 @@ test('runSelfcheck: an anonymous ping answering 200 means the route is not ours'
     const { fetchImpl } = fetchStub(handler)
     const result = await runSelfcheck(options(roots, fetchImpl))
     assertShape(result)
-    assert.equal(result.checks[0].name, 'routeMounted')
-    assert.equal(result.checks[0].ok, false)
-    assert.match(result.checks[0].detail, /401/u)
-    assert.equal(result.checks[1].ok, false)
+    const byName = Object.fromEntries(result.checks.map((check) => [check.name, check]))
+    assert.equal(byName.routeMounted.name, 'routeMounted')
+    assert.equal(byName.routeMounted.ok, false)
+    assert.match(byName.routeMounted.detail, /401/u)
+    assert.equal(byName.tokenRequired.ok, false)
   } finally {
     removeRoots(roots.mediaRoot, roots.projectsRoot)
   }
@@ -167,10 +201,10 @@ test('runSelfcheck: tokenRequired compares the ping response with the config', a
     const { fetchImpl } = fetchStub(happyHandler({ requireToken: false }))
     const result = await runSelfcheck(options(roots, fetchImpl))
     assertShape(result)
-    assert.equal(result.checks[0].ok, true)
-    assert.equal(result.checks[1].name, 'tokenRequired')
-    assert.equal(result.checks[1].ok, false)
-    assert.match(result.checks[1].detail, /requireToken=true/u)
+    const byName = Object.fromEntries(result.checks.map((check) => [check.name, check]))
+    assert.equal(byName.routeMounted.ok, true)
+    assert.equal(byName.tokenRequired.ok, false)
+    assert.match(byName.tokenRequired.detail, /requireToken=true/u)
   } finally {
     removeRoots(roots.mediaRoot, roots.projectsRoot)
   }
@@ -293,7 +327,7 @@ test('runSelfcheck: projectsRoute skips the read probe when no project exists', 
     const result = await runSelfcheck(options(roots, fetchImpl))
     assertShape(result)
     assert.equal(result.ok, true)
-    assert.match(result.checks[4].detail, /跳过/u)
+    assert.match(result.checks.find((check) => check.name === 'projectsRoute').detail, /跳过/u)
     assert.equal(calls.some((entry) => entry.url.pathname === PROJECTS_PATH), false)
   } finally {
     removeRoots(roots.mediaRoot, roots.projectsRoot)
@@ -358,6 +392,8 @@ test('apply: the startup selfcheck leaves a report on disk', async () => {
   apply(stub.ctx, {
     mediaRoot: roots.mediaRoot,
     projectsRoot: roots.projectsRoot,
+    runtimeDir: FAKE_RUNTIME.dir,
+    chromePath: FAKE_RUNTIME.chrome,
     dataDir,
     selfcheckDelayMs: 10,
   })
@@ -370,7 +406,7 @@ test('apply: the startup selfcheck leaves a report on disk', async () => {
       if (report === undefined) await new Promise((resolve) => setTimeout(resolve, 20))
     }
     assert.ok(report, 'expected a report after the startup check ran')
-    assert.equal(report.checks.length, 5)
+    assert.equal(report.checks.length, NAMES.length)
     assert.equal(report.ok, false)
     assert.equal(report.checks.find((check) => check.name === 'projectsRootWritable').ok, true)
   } finally {
@@ -403,6 +439,8 @@ test('apply: unloading before the delay cancels the startup selfcheck', async ()
   apply(ctx, {
     mediaRoot: roots.mediaRoot,
     projectsRoot: roots.projectsRoot,
+    runtimeDir: FAKE_RUNTIME.dir,
+    chromePath: FAKE_RUNTIME.chrome,
     dataDir,
     selfcheckDelayMs: 50,
   })
@@ -442,6 +480,8 @@ test('apply: an unwritable data dir logs a redacted failure, not the raw path', 
   apply(ctx, {
     mediaRoot: roots.mediaRoot,
     projectsRoot: roots.projectsRoot,
+    runtimeDir: FAKE_RUNTIME.dir,
+    chromePath: FAKE_RUNTIME.chrome,
     dataDir: badDataDir,
     selfcheckDelayMs: 10,
   })
@@ -525,12 +565,14 @@ function call(origin, target) {
   })
 }
 
-test('selfcheck route: five green checks over the real HTTP listener', async () => {
+test('selfcheck route: every check is green over the real HTTP listener', async () => {
   const roots = makeRoots()
   const stub = stubContext()
   apply(stub.ctx, {
     mediaRoot: roots.mediaRoot,
     projectsRoot: roots.projectsRoot,
+    runtimeDir: FAKE_RUNTIME.dir,
+    chromePath: FAKE_RUNTIME.chrome,
     selfcheckOnStartup: false,
   })
   const created = createProject(roots.projectsRoot, { title: '真实链路项目' }, { now: FIXED })
@@ -561,6 +603,63 @@ test('selfcheck route: five green checks over the real HTTP listener', async () 
   } finally {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))
+    removeRoots(roots.mediaRoot, roots.projectsRoot)
+  }
+})
+
+// --- M2 runtime checks -----------------------------------------------------
+
+test('runSelfcheck: a missing runtime fails runtimeReady and skips ffmpegReady', async () => {
+  const roots = makeRoots()
+  try {
+    const { fetchImpl } = fetchStub(happyHandler())
+    const result = await runSelfcheck(options(roots, fetchImpl, {
+      runtime: {
+        state: 'missing',
+        cliExists: false,
+        ffmpegExists: false,
+        ffprobeExists: false,
+        browser: { source: 'program-files' },
+      },
+    }))
+    assertShape(result)
+    const byName = Object.fromEntries(result.checks.map((check) => [check.name, check]))
+    assert.equal(byName.runtimeReady.ok, false)
+    assert.match(byName.runtimeReady.detail, /未安装/u)
+    assert.equal(byName.ffmpegReady.ok, true)
+    assert.equal(byName.ffmpegReady.skipped, true)
+    assert.equal(byName.browserFound.ok, true)
+    assert.equal(result.ok, false)
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot)
+  }
+})
+
+test('runSelfcheck: a missing browser and missing ffmpeg are separate failures', async () => {
+  const roots = makeRoots()
+  try {
+    const { fetchImpl } = fetchStub(happyHandler())
+    const noBrowser = await runSelfcheck(options(roots, fetchImpl, {
+      runtime: { state: 'ready', cliExists: true, ffmpegExists: true, ffprobeExists: true },
+    }))
+    assertShape(noBrowser)
+    const withoutBrowser = Object.fromEntries(noBrowser.checks.map((check) => [check.name, check]))
+    assert.equal(withoutBrowser.browserFound.ok, false)
+    assert.match(withoutBrowser.browserFound.detail, /Chrome/u)
+
+    const noFfmpeg = await runSelfcheck(options(roots, fetchImpl, {
+      runtime: {
+        state: 'ready',
+        cliExists: true,
+        ffmpegExists: false,
+        ffprobeExists: true,
+        browser: { source: 'program-files' },
+      },
+    }))
+    const withoutFfmpeg = Object.fromEntries(noFfmpeg.checks.map((check) => [check.name, check]))
+    assert.equal(withoutFfmpeg.ffmpegReady.ok, false)
+    assert.match(withoutFfmpeg.ffmpegReady.detail, /ffmpeg/u)
+  } finally {
     removeRoots(roots.mediaRoot, roots.projectsRoot)
   }
 })

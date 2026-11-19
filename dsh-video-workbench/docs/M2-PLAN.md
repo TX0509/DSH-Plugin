@@ -1,6 +1,7 @@
 # M2 执行计划：渲染管线
 
-> 状态：**步骤 0–1 已完成**（2026-11-19）；下一步「步骤 2：运行时供给与校验」。
+> 状态：**全部步骤已完成**（2026-11-19，v0.2.0）。步骤 7 的实机验收：`render-smoke.mjs` 通过，
+> 浮层 UI 需完全重启 DSH 后确认；执行中被推翻的假设见 §14。）
 > 基线 v0.1.2（M1 完成并通过实机验收，`verify` 全绿、127 项测试）。
 > 本文对应 [PLAN.md](../PLAN.md) 里程碑表里「M2 渲染管线」那一行，把它拆成可以照着执行的步骤、
 > 接口、命令与验收标准；结构对齐 [M1-PLAN.md](M1-PLAN.md)。
@@ -110,7 +111,7 @@ M4 的 agent 工具只包这层，不再写第二套逻辑（AGENTS.md §5 要�
 | `runtime-missing` | 运行时未安装/不完整 | 首次使用需要安装渲染运行时（可提供一键入口或命令） |
 | `browser-missing` | 找不到 Chrome | 未找到 Chrome，请在配置里指定 `chromePath` |
 | `project-invalid` | 项目不存在/校验失败 | 项目不可用：<第一条错误> |
-| `composition-missing` | `composition/index.html` 不存在 | 项目缺少 composition/index.html |
+| `composition-missing` | `index.html` 不存在 | 项目缺少 index.html |
 | `render-failed` | CLI 退出码非 0 | 渲染失败（code），日志见 <相对路径> |
 | `timeout` / `cancelled` | 超时 / 主动取消 | 渲染超时/已取消 |
 
@@ -192,7 +193,7 @@ M2 先做**最小可用**：
 - `quality`: `draft | standard | high`（默认 `standard`，M2 用 `standard`；M4 可让 agent 选 `draft`）。
 - `workers`: 默认 `2`（每个 worker 一个 Chrome，约 256 MB）；`Config.renderWorkers` 可覆盖。
 - 不加 `--quiet`（需要进度行）；不加 `--strict`（lint 门禁留给 M4）。
-- `-c` 只在项目没有 `index.html` 但指定了别的合成时使用；M2 约定入口固定为 `composition/index.html`，
+- `-c` 只在项目没有 `index.html` 但指定了别的合成时使用；M2 约定入口固定为 `index.html`，
   通过 `-c` 指向它（`index.html` 由 M2 的脚手架写入，见步骤 2）。
 - 工作目录 = 项目目录；argv 数组传参，**不拼命令行字符串**（PLAN §4.5）。
 
@@ -263,12 +264,12 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | --- | --- | --- | --- |
 | 0 | `docs: 记录 M2 运行时与 CLI 实测` | 本文件 + `hyperframes render --help` 结论 + 本机清单（node/pnpm/chrome/ffmpeg 实际路径，脱敏） | 文档合入 |
 | 1 | `feat: 增加运行时探测与渲染参数构造` | `locate.ts`、`env.ts`、`args.ts` + 纯函数测试（探测顺序、env 白名单、argv 形状、node≥22 拒绝） | 无副作用、可在 CI 跑 | ✅ 已完成（27 项用例，测试 100→127） |
-| 2 | `feat: 增加运行时供给与校验` | `supply.ts`：安装、二次重跑、二进制校验、`supplied.json`、锁与日志；`GET /runtime` | 本机从零装一次成功；重复调用秒返回；删二进制后能自愈 |
-| 3 | `feat: 增加渲染任务服务` | `jobs.ts`：状态机、并发 1、队列、超时；`render/routes.ts` 三个接口 | 用 fake CLI 跑通 成功/失败/超时/忙碌 409 |
-| 4 | `feat: 增加进度解析与取消清理` | `progress.ts`、`process.ts`、孤儿扫描、卸载清理 | fake CLI 打印真实格式进度；取消后无进程与 `.tmp` |
-| 5 | `feat: 增加产物落地与保留策略` | `outputs.ts`：版本递增、原子 rename、ffprobe 校验、保留 N、exportDir 复制与 `safeTitle` | 连跑 6 次只剩 5 个；导出命名与不覆盖 |
-| 6 | `feat: 客户端渲染入口与进度 UI` | 浮层加「渲染 / 取消」+ 状态行 + 结果 `<video>`（复用现有播放器） | 点一次真渲染 10 s 片成功，进度可见、可取消 |
-| 7 | `docs: 更新 M2 验收记录` | README / INSTALL / COMPAT / HANDOFF / 截图 | 文档与实测一致 |
+| 2 | `feat: 增加运行时供给与校验` | `supply.ts`：安装、二次重跑、二进制校验、`supplied.json`、锁与日志；`GET /runtime` | ✅ 从零安装成功（约 840 MB）；`Emitted ERR_PNPM_IGNORED_BUILDS` 不算失败，最终以二进制校验为准 |
+| 3 | `feat: 增加渲染任务服务` | `jobs.ts`：状态机、并发 1、队列、超时；`render/routes.ts` 三个接口 | ✅ fake CLI 跑通成功/取消/超时/队列满；真机走通全链路 |
+| 4 | `feat: 增加进度解析与取消清理` | `progress.ts`、`process.ts`、孤儿扫描、卸载清理 | ✅ 真实格式进度解析、取消/超时杀进程树、启动孤儿清理 |
+| 5 | `feat: 增加产物落地与保留策略` | `outputs.ts`：版本递增、原子 rename、ffprobe 校验、保留 N、exportDir 复制与 `safeTitle` | ✅ 真机产物 `10.000000s / 1080×1920`，`index.json` 与导出副本正确 |
+| 6 | `feat: 客户端渲染入口与进度 UI` | 浮层加「渲染 / 取消」+ 状态行 + 结果 `<video>`（复用现有播放器） | ✅ 代码与 bundle 测试通过；**实机需完全重启 DSH 后确认** |
+| 7 | `docs: 更新 M2 验收记录` | README / INSTALL / COMPAT / HANDOFF / 截图 | ✅ 文档与实测一致（截图留待 UI 实机验收后补） |
 
 每一步都必须先写测试再动实现（纯函数优先）；步骤 3–5 用**假 CLI**（`test/fixtures/fake-hyperframes.mjs`）
 驱动，不依赖真渲染。
@@ -350,6 +351,17 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | C | 首次安装 UX | **M2 最小可用**：`安装运行时` 按钮 + 状态轮询 + 失败码 + `install.log` 入口；百分比/预估/断点留 M4 | §4.4、步骤 2 + 6 |
 
 三项均已并入上面的正文，不再有待确认项。
+
+**执行中被实测推翻/修正的假设（重要，M3 起沿用）**
+
+| 原假设 | 实测结论 | 影响 |
+| --- | --- | --- |
+| 合成入口是 `<project>/composition/index.html` | **错误**：`hyperframes render <DIR>` 只认 `<DIR>/index.html`，`-c` 只能选择 DIR 内的文件 | 布局改为 `<project>/index.html` 为入口；`composition/` 保留给 M4 子合成 |
+| 临时产物 `.vN.mp4.tmp-<rand>` | **错误**：CLI 按扩展名推断容器，`.tmp` 直接失败 | 临时文件改为 `.vN.tmp-<rand>.mp4`，成功后 rename 成 `vN.mp4` |
+| 由调用方负责生成合成 | 只写脚手架还不够：必须在页面里注册 `window.__timelines[id]` | 脚手架内置最小 timeline 契约对象；未注册时渲染器空等 45 秒 |
+| Chrome 能自动找到 | **错误**：hyperframes 在 Windows 不扫描系统 Chrome，会尝试联网下载 | 渲染 env 必须带 `HYPERFRAMES_BROWSER_PATH`（已由 `chromePick` 注入） |
+| 任何时长都能精确 | `totalFrames = ceil(duration × fps)` | 想精确到 `10.000s` 必须让 `duration × fps` 为整数（脚手架按分镜时长求和） |
+| 用命名 web 字体 | 非通用字族会联网抓 Google Fonts | 脚手架只用 `sans-serif`；自定义字体需本地 `@font-face` |
 
 ## 15. 开工前的一次性核对（步骤 0 内容预告）
 

@@ -1,7 +1,15 @@
 import * as React from 'react'
 
 import type { ClientSlotContext } from '../shared/dsh'
-import { MEDIA_PATH, PING_PATH } from '../shared/routes'
+import {
+  MEDIA_PATH,
+  PING_PATH,
+  PROJECTS_LIST_PATH,
+  PROJECTS_PATH,
+  RENDER_PATH,
+  RUNTIME_INSTALL_PATH,
+  RUNTIME_PATH,
+} from '../shared/routes'
 
 import { hostUrl, installStyles, readToken } from './adapters/context'
 import { registerEntry, registerOverlay } from './adapters/slots'
@@ -10,7 +18,7 @@ const h = React.createElement
 
 const OPEN_EVENT = 'dshvw:toggle'
 
-/** The sample clip M1 ships for the self-check and the overlay player. */
+/** The sample clip M1 ships for the media self-check. */
 const SAMPLE_MEDIA = 'test.mp4'
 
 const mediaUrl = (name: string): string => hostUrl(MEDIA_PATH, {
@@ -18,7 +26,14 @@ const mediaUrl = (name: string): string => hostUrl(MEDIA_PATH, {
   t: readToken(),
 })
 
+const projectFileUrl = (relative: string): string => hostUrl(PROJECTS_PATH, {
+  path: relative,
+  t: readToken(),
+})
+
 const maskToken = (href: string): string => href.replace(/([?&]t=)[^&]*/u, '$1***')
+
+const withToken = (pathname: string): string => hostUrl(pathname, { t: readToken() })
 
 const CSS = [
   '.dshvw-trigger{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}',
@@ -32,12 +47,71 @@ const CSS = [
   '.dshvw-close{height:28px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}',
   '.dshvw-close:hover{background:var(--dsw-alias-interactive-bg-hover)}',
   '.dshvw-close:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
+  '.dshvw-close:disabled{opacity:.5;cursor:default}',
   '.dshvw-video{width:100%;height:auto;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}',
   '.dshvw-error-row{display:flex;gap:8px;align-items:flex-start}',
   '.dshvw-error{flex:1;margin:0;padding:8px;border-radius:8px;border:1px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font-size:12px}',
   '.dshvw-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}',
   '.dshvw-diag{margin:0;padding:8px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-family:var(--dsh-code-font, monospace);font-size:11px;white-space:pre-wrap;word-break:break-all}',
+  '.dshvw-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary)}',
+  '.dshvw-row-label{color:var(--dsw-alias-label-primary)}',
+  '.dshvw-bar{position:relative;flex:1;min-width:120px;height:6px;border-radius:999px;background:var(--dsw-alias-bg-layer-3);overflow:hidden}',
+  '.dshvw-bar-fill{height:100%;background:var(--dsw-alias-brand-primary);transition:width .3s ease}',
+  '.dshvw-select{max-width:320px;height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px}',
 ].join('\n')
+
+interface RuntimeView {
+  state: 'ready' | 'missing' | 'installing'
+  versions?: Record<string, string>
+  browser?: { source: string } | null
+  lastError?: string
+}
+
+interface ProjectSummary {
+  id: string
+  title: string
+  scenes: number
+}
+
+interface ProjectList {
+  state: 'ready' | 'unset' | 'invalid'
+  projects: ProjectSummary[]
+  invalid: Array<{ id: string; errors: string[] }>
+}
+
+interface JobView {
+  id: string
+  status: string
+  phase: string
+  percent: number
+  frames?: number
+  totalFrames?: number
+  output?: { version: number; file: string; durationSec?: number }
+  error?: string
+}
+
+async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init)
+  if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+  return await response.json() as T
+}
+
+const PHASE_LABEL: Record<string, string> = {
+  preparing: '准备中',
+  capturing: '渲染帧',
+  encoding: '编码',
+  assembling: '合成',
+  done: '完成',
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  queued: '排队中',
+  running: '渲染中',
+  succeeded: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+  timedOut: '超时',
+}
 
 function Trigger(): React.ReactElement {
   return h('button', {
@@ -53,11 +127,13 @@ const FOCUSABLE = 'button, [href], input, select, textarea, video, [tabindex]:no
 
 function Panel(): React.ReactElement | null {
   const [open, setOpen] = React.useState(false)
-  const [diag, setDiag] = React.useState('检测中…')
-  const [time, setTime] = React.useState(0)
-  const [duration, setDuration] = React.useState(0)
+  const [runtime, setRuntime] = React.useState<RuntimeView | undefined>(undefined)
+  const [projects, setProjects] = React.useState<ProjectList | undefined>(undefined)
+  const [projectId, setProjectId] = React.useState('')
+  const [job, setJob] = React.useState<JobView | undefined>(undefined)
+  const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
-  const [attempt, setAttempt] = React.useState(0)
+  const [probe, setProbe] = React.useState<{ status: number; contentRange: string | null } | undefined>(undefined)
   const closeRef = React.useRef<HTMLButtonElement | null>(null)
   const cardRef = React.useRef<HTMLElement | null>(null)
   const previousFocus = React.useRef<HTMLElement | null>(null)
@@ -123,62 +199,124 @@ function Panel(): React.ReactElement | null {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [open])
 
+  // Load runtime status, project list and the media probe when the panel opens.
   React.useEffect(() => {
     if (!open) return undefined
     let cancelled = false
-    setDiag('检测中…')
     setError('')
-    setTime(0)
-    setDuration(0)
-    const run = async (): Promise<void> => {
-      const token = readToken()
-      if (token === '') {
-        if (!cancelled) {
-          setDiag(JSON.stringify({ tokenPresent: false }, null, 2))
-          setError('未获取到访问令牌：请完全退出并重新打开 DSH 后重试。')
-        }
-        return
-      }
+    const token = readToken()
+    if (token === '') {
+      setError('未获取到访问令牌：请完全退出并重新打开 DSH 后重试。')
+      return undefined
+    }
+    void (async () => {
       try {
-        const pingResponse = await fetch(hostUrl(PING_PATH, { t: token }))
-        const ping: unknown = await pingResponse.json()
-        const probe = await fetch(mediaUrl(SAMPLE_MEDIA), { headers: { Range: 'bytes=0-99' } })
+        const [runtimeView, projectList] = await Promise.all([
+          getJson<RuntimeView>(withToken(RUNTIME_PATH)),
+          getJson<ProjectList>(withToken(PROJECTS_LIST_PATH)),
+        ])
         if (cancelled) return
-        setDiag(JSON.stringify({
-          origin: window.location.origin,
-          baseURI: document.baseURI,
-          mediaUrl: maskToken(mediaUrl(SAMPLE_MEDIA)),
-          tokenPresent: true,
-          ping,
-          media: {
-            status: probe.status,
-            contentType: probe.headers.get('content-type'),
-            contentRange: probe.headers.get('content-range'),
-          },
-        }, null, 2))
-        if (probe.status !== 206) {
-          fail(`媒体请求返回 ${String(probe.status)}，请检查文件是否存在。`)
+        setRuntime(runtimeView)
+        setProjects(projectList)
+        if (projectList.projects.length > 0) {
+          setProjectId((current) => (current === '' ? projectList.projects[0].id : current))
+        }
+        try {
+          const head = await fetch(mediaUrl(SAMPLE_MEDIA), { headers: { Range: 'bytes=0-99' } })
+          if (!cancelled) setProbe({ status: head.status, contentRange: head.headers.get('content-range') })
+        } catch {
+          if (!cancelled) setProbe({ status: 0, contentRange: null })
         }
       } catch (failure) {
-        if (!cancelled) {
-          setDiag(JSON.stringify({ tokenPresent: true, error: String(failure) }, null, 2))
-          fail('请求失败：请确认文件存在且 DSH 已重启。')
-        }
+        if (!cancelled) fail(`加载失败：${String(failure)}。请确认 DSH 已完全重启。`)
       }
-    }
-    void run()
+    })()
     return () => {
       cancelled = true
     }
-  }, [open, attempt])
+  }, [open])
 
-  const retry = (): void => {
-    closeRef.current?.focus()
+  // Poll the running job once per second (M2: HTTP polling, decision A).
+  React.useEffect(() => {
+    if (!open || job === undefined) return undefined
+    if (job.status !== 'queued' && job.status !== 'running') return undefined
+    let cancelled = false
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const next = await getJson<{ job: JobView }>(withToken(`${RENDER_PATH}/${job.id}`))
+          if (!cancelled) setJob(next.job)
+        } catch {
+          // A single failed poll is not fatal; the next tick retries.
+        }
+      })()
+    }, 1000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [open, job?.id, job?.status])
+
+  const installRuntime = async (): Promise<void> => {
+    setBusy(true)
     setError('')
-    setAttempt((value) => value + 1)
+    try {
+      const started = await getJson<RuntimeView>(withToken(RUNTIME_INSTALL_PATH), { method: 'POST' })
+      setRuntime(started)
+      const poll = setInterval(() => {
+        void (async () => {
+          try {
+            const next = await getJson<RuntimeView>(withToken(RUNTIME_PATH))
+            setRuntime(next)
+            if (next.state !== 'installing') {
+              clearInterval(poll)
+              setBusy(false)
+            }
+          } catch {
+            // Keep polling until the plugin answers again.
+          }
+        })()
+      }, 2000)
+    } catch (failure) {
+      setBusy(false)
+      fail(`安装请求失败：${String(failure)}`)
+    }
+  }
+
+  const startRender = async (): Promise<void> => {
+    setError('')
+    setJob(undefined)
+    try {
+      const started = await getJson<{ job: JobView }>(withToken(RENDER_PATH), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      })
+      setJob(started.job)
+    } catch (failure) {
+      fail(`无法开始渲染：${String(failure)}`)
+    }
+  }
+
+  const cancelRender = async (): Promise<void> => {
+    if (job === undefined) return
+    try {
+      const response = await getJson<{ job: JobView }>(withToken(`${RENDER_PATH}/${job.id}`), { method: 'DELETE' })
+      setJob(response.job)
+    } catch (failure) {
+      fail(`取消失败：${String(failure)}`)
+    }
   }
 
   if (!open) return null
+
+  const selected = projects?.projects.find((project) => project.id === projectId)
+  const runtimeReady = runtime?.state === 'ready'
+  const rendering = job !== undefined && (job.status === 'queued' || job.status === 'running')
+  const finished = job !== undefined && job.status === 'succeeded' && job.output !== undefined
+  const videoSrc = finished && job?.output !== undefined
+    ? projectFileUrl(`${projectId}/renders/v${String(job.output.version)}.mp4`)
+    : mediaUrl(SAMPLE_MEDIA)
 
   return h('div', {
     className: 'dshvw-backdrop',
@@ -196,7 +334,7 @@ function Panel(): React.ReactElement | null {
     h('header', { className: 'dshvw-head', key: 'head' }, [
       h('div', { key: 'title' }, [
         h('h2', { className: 'dshvw-title', key: 'h' }, '视频工作台'),
-        h('p', { className: 'dshvw-sub', key: 'p' }, '自检：路由挂载、访问令牌与 Range 播放'),
+        h('p', { className: 'dshvw-sub', key: 'p' }, '渲染当前项目并预览成片'),
       ]),
       h('button', {
         key: 'close',
@@ -206,34 +344,101 @@ function Panel(): React.ReactElement | null {
         onClick: () => setOpen(false),
       }, '关闭 (Esc)'),
     ]),
-    error === '' ? null : h('div', { className: 'dshvw-error-row', key: 'error' }, [
-      h('p', { className: 'dshvw-error', role: 'alert', key: 'text' }, error),
+
+    h('div', { className: 'dshvw-row', key: 'runtime' }, [
+      h('span', { key: 'label', className: 'dshvw-row-label' }, '渲染运行时'),
+      h('span', { key: 'state' }, runtime === undefined
+        ? '检测中…'
+        : runtime.state === 'ready'
+          ? `已就绪（hyperframes ${runtime.versions?.hyperframes ?? '?'}）`
+          : runtime.state === 'installing'
+            ? '正在安装…（首次约 2–10 分钟）'
+            : `未安装${runtime.lastError === undefined ? '' : `（${runtime.lastError}）`}`),
+      runtime?.browser == null ? null : h('span', { key: 'browser' }, `浏览器：${runtime.browser.source}`),
+      runtime?.state === 'missing'
+        ? h('button', {
+          key: 'install',
+          type: 'button',
+          className: 'dshvw-close',
+          disabled: busy,
+          onClick: () => { void installRuntime() },
+        }, busy ? '安装中…' : '安装运行时')
+        : null,
+    ]),
+
+    h('div', { className: 'dshvw-row', key: 'projects' }, [
+      h('span', { key: 'label', className: 'dshvw-row-label' }, '项目'),
+      projects === undefined
+        ? h('span', { key: 'loading' }, '加载中…')
+        : projects.state !== 'ready'
+          ? h('span', { key: 'unset' }, '项目功能未启用（未配置 projectsRoot）')
+          : projects.projects.length === 0
+            ? h('span', { key: 'empty' }, '暂无项目')
+            : h('select', {
+              key: 'select',
+              className: 'dshvw-select',
+              value: projectId,
+              onChange: (event: React.ChangeEvent<HTMLSelectElement>) => setProjectId(event.target.value),
+            }, projects.projects.map((project) => h('option', { key: project.id, value: project.id },
+              `${project.title}（${String(project.scenes)} 分镜）`))),
       h('button', {
-        key: 'retry',
+        key: 'render',
         type: 'button',
         className: 'dshvw-close',
-        onClick: retry,
-      }, '重试'),
+        disabled: !runtimeReady || rendering || projectId === '',
+        onClick: () => { void startRender() },
+      }, rendering ? '渲染中…' : '渲染'),
+      rendering
+        ? h('button', {
+          key: 'cancel',
+          type: 'button',
+          className: 'dshvw-close',
+          onClick: () => { void cancelRender() },
+        }, '取消')
+        : null,
     ]),
-    error === '' ? h('video', {
-      key: `video-${attempt}`,
+
+    job === undefined ? null : h('div', { className: 'dshvw-row', key: 'progress' }, [
+      h('span', { key: 'status', className: 'dshvw-row-label' },
+        `${STATUS_LABEL[job.status] ?? job.status}${job.phase === 'queued' ? '' : ` · ${PHASE_LABEL[job.phase] ?? job.phase}`}`),
+      h('span', { key: 'bar', className: 'dshvw-bar' },
+        h('span', { className: 'dshvw-bar-fill', style: { width: `${String(job.percent)}%`, display: 'block' } })),
+      h('span', { key: 'percent' }, job.frames === undefined
+        ? `${String(job.percent)}%`
+        : `${String(job.percent)}%（${String(job.frames)}/${String(job.totalFrames ?? '?')} 帧）`),
+      job.error === undefined
+        ? null
+        : h('span', { key: 'error', role: 'alert' }, `错误：${job.error}`),
+    ]),
+
+    error === '' ? null : h('div', { className: 'dshvw-error-row', key: 'error' }, [
+      h('p', { className: 'dshvw-error', role: 'alert', key: 'text' }, error),
+    ]),
+
+    h('video', {
+      key: `video-${videoSrc}`,
       className: 'dshvw-video',
-      src: mediaUrl(SAMPLE_MEDIA),
+      src: videoSrc,
       controls: true,
       preload: 'metadata',
-      onLoadedMetadata: (event: React.SyntheticEvent<HTMLVideoElement>) =>
-        setDuration(event.currentTarget.duration || 0),
-      onTimeUpdate: (event: React.SyntheticEvent<HTMLVideoElement>) =>
-        setTime(event.currentTarget.currentTime || 0),
       onError: () => fail('视频加载失败：请确认文件存在且访问令牌有效。'),
-    }) : null,
-    h('div', { className: 'dshvw-meta', key: 'meta' }, error === ''
-      ? [
-        h('span', { key: 't' }, `当前 ${time.toFixed(2)}s`),
-        h('span', { key: 'd' }, `时长 ${duration.toFixed(2)}s`),
-      ]
-      : [h('span', { key: 'unavailable' }, '媒体不可用')]),
-    h('pre', { className: 'dshvw-diag', key: 'diag' }, diag),
+    }),
+
+    h('div', { className: 'dshvw-meta', key: 'meta' }, [
+      h('span', { key: 'source' }, finished
+        ? `成片：v${String(job?.output?.version)}（${String(selected?.title ?? projectId)}）`
+        : '预览：示例片 test.mp4'),
+      probe === undefined
+        ? null
+        : h('span', { key: 'probe' }, `媒体 206 探测：${String(probe.status)}`),
+    ]),
+
+    h('pre', { className: 'dshvw-diag', key: 'diag' }, JSON.stringify({
+      mediaUrl: maskToken(mediaUrl(SAMPLE_MEDIA)),
+      runtime: runtime?.state ?? 'unknown',
+      projects: projects?.projects.length ?? 0,
+      job: job === undefined ? null : { id: job.id, status: job.status, percent: job.percent },
+    }, null, 2)),
   ]))
 }
 

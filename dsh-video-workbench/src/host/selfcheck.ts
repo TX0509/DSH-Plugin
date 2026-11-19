@@ -18,6 +18,18 @@ export type SelfcheckName =
   | 'mediaProbe'
   | 'projectsRootWritable'
   | 'projectsRoute'
+  | 'runtimeReady'
+  | 'browserFound'
+  | 'ffmpegReady'
+
+/** What the render runtime looks like right now; supplied by `apply`. */
+export interface RuntimeProbe {
+  state: 'ready' | 'missing' | 'installing'
+  cliExists: boolean
+  ffmpegExists: boolean
+  ffprobeExists: boolean
+  browser?: { source: string }
+}
 
 export interface SelfcheckCheck {
   name: SelfcheckName
@@ -41,6 +53,8 @@ export interface SelfcheckOptions {
   projects: ProjectsConfig
   /** Project-relative media file the probe reads; defaults to `test.mp4`. */
   mediaProbePath?: string
+  /** Render runtime status (M2 checks). */
+  runtime?: RuntimeProbe
   /** Aborted when the plugin unloads: in-flight probes stop instead of running on. */
   signal?: AbortSignal
   /** Injectable for tests; defaults to the global fetch. */
@@ -311,6 +325,40 @@ function readOrigin(options: SelfcheckOptions): string | undefined {
   }
 }
 
+/** Render runtime installed and its CLI present (M2). */
+function checkRuntimeReady(options: SelfcheckOptions): SelfcheckCheck {
+  if (options.signal?.aborted === true) return cancelled('runtimeReady')
+  const runtime = options.runtime
+  if (runtime === undefined) return fail('runtimeReady', '未提供运行时状态')
+  if (runtime.state === 'installing') return fail('runtimeReady', '渲染运行时正在安装，完成后再试')
+  if (runtime.state !== 'ready' || !runtime.cliExists) {
+    return fail('runtimeReady', '渲染运行时未安装（可在插件浮层点「安装运行时」或运行 scripts/install-runtime）')
+  }
+  return pass('runtimeReady', 'hyperframes 运行时已就绪')
+}
+
+/** A Chrome the renderer can drive (M2). */
+function checkBrowserFound(options: SelfcheckOptions): SelfcheckCheck {
+  if (options.signal?.aborted === true) return cancelled('browserFound')
+  const browser = options.runtime?.browser
+  if (browser === undefined) {
+    return fail('browserFound', '未找到 Chrome：请安装 Chrome 或在配置里设置 chromePath')
+  }
+  return pass('browserFound', `已找到浏览器（来源：${browser.source}）`)
+}
+
+/** ffmpeg/ffprobe present inside the runtime; skipped until the runtime is ready. */
+function checkFfmpegReady(options: SelfcheckOptions): SelfcheckCheck {
+  if (options.signal?.aborted === true) return cancelled('ffmpegReady')
+  const runtime = options.runtime
+  if (runtime === undefined) return fail('ffmpegReady', '未提供运行时状态')
+  if (runtime.state !== 'ready') return skip('ffmpegReady', '运行时未就绪，跳过')
+  if (!runtime.ffmpegExists || !runtime.ffprobeExists) {
+    return fail('ffmpegReady', '运行时里缺少 ffmpeg/ffprobe，请重新安装运行时')
+  }
+  return pass('ffmpegReady', 'ffmpeg / ffprobe 可执行')
+}
+
 /** Run all five checks; every check is attempted even when an earlier one fails. */
 export async function runSelfcheck(options: SelfcheckOptions): Promise<SelfcheckResult> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
@@ -324,6 +372,9 @@ export async function runSelfcheck(options: SelfcheckOptions): Promise<Selfcheck
     await checkMediaProbe(options, fetchImpl, timeoutMs, origin),
     checkProjectsRootWritable(options),
     await checkProjectsRoute(options, fetchImpl, timeoutMs, origin),
+    checkRuntimeReady(options),
+    checkBrowserFound(options),
+    checkFfmpegReady(options),
   ]
 
   return { ok: checks.every((check) => check.ok), checks }

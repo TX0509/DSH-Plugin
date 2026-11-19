@@ -79,12 +79,38 @@ M0 不需要配置。M1 增加项目能力后，需要给 profile 的 `cordis.pa
 | `dataDir` | 否 | 插件数据目录，默认 `$DSH_HOME/cache/dsh-video-workbench`；自检报告写在这里 |
 | `selfcheckOnStartup` | 否 | 默认 `true`；启动 3 秒后自动跑 `video_selfcheck` 并写报告 |
 | `selfcheckDelayMs` | 否 | 默认 `3000`；启动自检延迟 |
+| `selfcheckMediaPath` | 否 | 默认 `test.mp4`；自检探测的媒体文件（相对 `mediaRoot`） |
 | `selfcheckMediaPath` | 否 | 默认 `test.mp4`；自检探测的媒体文件（相对 `mediaRoot`），换样本时用它 |
 | `requireToken` | 否 | 默认 `true`；不推荐关闭 |
+| `runtimeDir` | 否 | 渲染运行时目录，默认 `$DSH_HOME/cache/dsh-video-workbench/runtime`（约 840 MB） |
+| `chromePath` | 否 | 指定 Chrome；渲染必须有浏览器，默认自动探测系统 Chrome |
+| `renderTimeoutMs` | 否 | 默认 `600000`；单次渲染超时 |
+| `renderWorkers` | 否 | 默认 `2`；并行 worker 数 |
+| `renderQuality` | 否 | 默认 `standard`；`draft` / `standard` / `high` |
+| `keepRenders` | 否 | 默认 `5`；每个项目保留的最新成片数 |
 
 未配置 `projectsRoot` 时插件仍可加载，但项目功能禁用：`video_selfcheck` 的
 `projectsRootWritable` / `projectsRoute` 会被标记为 `skipped`（不算失败），整份报告仍为 `ok`。
 配置了却不可用（盘符根、非目录、无权限）才算失败。
+
+## 首次使用：安装渲染运行时（M2）
+
+渲染需要 hyperframes + ffmpeg/ffprobe，安装在 `runtimeDir`（默认
+`$DSH_HOME/cache/dsh-video-workbench/runtime`，约 840 MB）。两种方式：
+
+1. **应用内**：完全重启 DSH 后打开 composer 左侧 ▶，运行时显示「未安装」时点「安装运行时」，
+   等状态变成「已就绪」（首次 2–10 分钟，取决于网络）。
+2. **命令行冒烟**（同时也验证渲染链路）：
+
+   ```powershell
+   node scripts/render-smoke.mjs
+   ```
+
+   脚本会在临时目录建一个 10 秒竖屏项目，跑完整渲染并校验 `10s / 1080x1920`，
+   输出 `exit 0` 即通过；加 `--keep` 可保留临时项目检查产物。
+
+要求：本机有 Chrome（插件通过 `HYPERFRAMES_BROWSER_PATH` 传给渲染器）；离线可用，
+但安装那一步需要能访问 npm registry（或已有 pnpm store 缓存）。
 
 ## 验证安装
 

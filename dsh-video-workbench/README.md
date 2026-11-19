@@ -173,5 +173,6 @@ node --test                # 只跑测试（100 项）
 
 ## 未完成
 
-M2–M6 见 [PLAN.md](PLAN.md)；M1 的目录、构建、schema 与验收步骤见 [docs/M1-PLAN.md](docs/M1-PLAN.md)；
+M2（渲染管线）的执行计划见 [docs/M2-PLAN.md](docs/M2-PLAN.md)，M3–M6 见 [PLAN.md](PLAN.md)；
+M1 的目录、构建、schema 与验收步骤见 [docs/M1-PLAN.md](docs/M1-PLAN.md)；
 下一个人/下一个会话请先读 [docs/HANDOFF.md](docs/HANDOFF.md)。

@@ -10,9 +10,10 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M1 完成**（构建、适配层、项目模型与路由、`video_selfcheck`、双端实机验收；下一步 M2 渲染管线）
+- 当前阶段：**M1 完成**（构建、适配层、项目模型与路由、`video_selfcheck`、双端实机验收）；
+  **M2 计划已写好，尚未开工** —— 见 [M2-PLAN.md](M2-PLAN.md)，开工前只需拍板 3 个决定
 - 已实机验证：DSH Desktop `0.2.2-rc.5` 完全重启后 Host 自检 **5/5** + 客户端半区**全部通过**（2026-11-19）
-- 待办：M2（见 §7）；Web / macOS 仍未验证
+- 待办：M2（§7）；Web / macOS 仍未验证
 - 版本：`0.1.2`（0.1.1 的元数据 + 0.1.2 的回归修复；`index.js` / `client.js` 均已变更，待重启复测）；分支 `main`
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.5`（2026-11-19 从 `0.2.2-rc.3` 升级）
 
@@ -63,7 +64,7 @@ dsh-video-workbench/
 ├── index.js / client.js         # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
 ├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest}.test.mjs   # 100 项
-├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
+├── docs/{M0-FINDINGS,M1-PLAN,M2-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
 
@@ -221,11 +222,18 @@ const r = await fetch(`/api/video-workbench/selfcheck?t=${t}`).then((x) => x.jso
 console.table(r.checks); r.ok
 ```
 
-## 7. M2 及之后（概要）
+## 7. M2 及之后
 
-见 `PLAN.md` 里程碑表：M2 渲染管线（运行时供给、进度/取消、原子写入）、M3 素材与配音、
-M4 Agent 工具主路径、M5 微调工作台、M6 交付打磨。M2 开工前先读 `docs/M0-FINDINGS.md`
-里关于 Chrome / ffmpeg / pnpm `--allow-build` 的结论，别重复踩坑。
+**M2 渲染管线 → 执行计划见 [M2-PLAN.md](M2-PLAN.md)**（目录、接口/协议、供给命令、渲染参数、进度解析、
+保留与导出、7 个步骤、测试计划、DoD、风险、估时）。开工前：
+
+1. 读 [M0-FINDINGS.md](M0-FINDINGS.md) 里 Chrome / ffmpeg / pnpm `--allow-build` 的结论，别重复踩坑；
+2. 读 M2-PLAN §14，**拍板 3 个待确认项**：进度通道（建议 HTTP 轮询）、渲染结果存哪
+   （建议 `renders/index.json`，不动 schema）、首次安装 UX（建议 M2 只做按钮+状态+失败码）；
+3. 从 M2-PLAN 步骤 1（探测 + env + argv 纯函数）开工，每步一个提交、`verify` 全绿。
+
+M3 素材与配音、M4 Agent 工具主路径、M5 微调工作台、M6 交付打磨仍按
+[PLAN.md](../PLAN.md) 里程碑表推进。
 
 ## 8. 新会话的第一条命令
 

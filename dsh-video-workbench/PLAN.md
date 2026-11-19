@@ -59,7 +59,7 @@ $DSH_HOME/cache/dsh-video-workbench/
 | --- | --- | --- | --- |
 | **M0 隔离与链路验证** | ① `api/...` 路由 + `<video>` 拖拽（206）；② 托管 Node 探测链 + 本地 hyperframes 安装/运行 + 缓存目录 + **子进程 env 清理**；③ 取消/退出无 Chrome 残留；④ overlay 窗口区域声明（读 `v0.2.2-rc.1/window-drag-regions`）；⑤ `docs/UPGRADE-PLAYBOOK.md` | 2 | 四条链路全绿；安装耗时可接受（≤15 分钟）；playbook 有可执行步骤 |
 | **M1 骨架与播放** | TS/esbuild 脚手架、包结构、`adapters/` 层、`projectsRoot` + `project.json`、媒体路由（Range + 路径校验）、overlay + 播放器、composer 入口、`video_selfcheck` 骨架、构建可复现校验——**执行细节见 [docs/M1-PLAN.md](docs/M1-PLAN.md)** | 3 | 手工 mp4 能播能拖、亮暗正常、Esc 焦点归位；`build` 后产物与提交一致 |
-| **M2 渲染管线** | 运行时供给与**首次下载 UX**、渲染任务/进度/取消/超时、进程树清理、原子写入、保留策略（最近 5 个 render） | 5 | UI 内跑完 10s 片；取消无残留进程与半成品；磁盘不无限增长 |
+| **M2 渲染管线** | 运行时供给与**首次下载 UX**、渲染任务/进度/取消/超时、进程树清理、原子写入、保留策略（最近 5 个 render）——**执行细节见 [docs/M2-PLAN.md](docs/M2-PLAN.md)** | 5 | UI 内跑完 10s 片；取消无残留进程与半成品；磁盘不无限增长 |
 | **M3 素材与配音** | Pixabay、Seedream 生图、火山 TTS（含 word timings）+ Kokoro 兜底、失败降级（无声也可出片）、素材缓存与署名、scenes → composition 脚手架 | 5 | 3 图 + 1 配音进片并渲染成功；无 key 时 Kokoro 出片；TTS 全失败时出无声片 |
 | **M4 Agent 主路径** | 9 个工具、结果卡、合成模板、`hyperframes lint` 门禁与失败修复回路、错误分类回传 | 6 | 固定 prompt 回归集 ≥2/3 出片；lint 不过不进入渲染 |
 | **M5 微调工作台** | 白名单 8 字段、分镜列表、属性面板、素材替换、预览 seek、重渲染、键盘与焦点 | 6 | 改文案后重渲染成功且 project.json 不被破坏；Tab/Esc 完整 |
@@ -71,9 +71,11 @@ $DSH_HOME/cache/dsh-video-workbench/
 
 ### 4.1 版本护栏
 
-- `engines.dsh` 首发用精确版本 `0.2.2-rc.3`：升级后插件拒绝激活，逼一次自检。
-- 实测通过后再放宽（如 `>=0.2.2-rc.3 <0.3.0`），并写入 `docs/COMPAT.md`。
+- 当前 `engines.dsh` = **`>=0.2.2-rc.5`（不设上限）**：本插件自用、不对外分发，升级不再被门禁停用；
+  代价是破坏性变更靠启动自检发现（0.1.1 决定，见 [docs/COMPAT.md](docs/COMPAT.md) 与
+  [docs/HANDOFF.md](docs/HANDOFF.md) §4 第 14 条）。
 - 升级流程：读 `$DSH_INSTALL_DIR/docs/upgrade-guide/README.md` 对应版本段 → 跑 selfcheck → 必要时只改 `adapters/`。
+- **不要再改回精确版本**：0.1.0 曾精确锁 `0.2.2-rc.3`，DSH 升到 rc.5 时插件被直接停用。
 
 ### 4.2 结构隔离
 
@@ -108,13 +110,17 @@ $DSH_HOME/cache/dsh-video-workbench/
 
 ### 4.6 自检（smoke）
 
-`video_selfcheck`：运行时探测 → 路由 206 → 3 秒样例渲染 → 产物校验 → 清理。`node --test` 覆盖纯函数：路径校验、Range 解析、`project.json` 迁移、provider 适配器（fixture）、时长计算。
+M1 已实现 5 项：路由挂载 / token / media 206 / `projectsRoot` 可写 / 项目路由可读
+（未配置的可选项标记 `skipped`）。M2 追加：运行时供给、Chrome、ffmpeg 的**真实性**检查
+（`existsSync` + 执行 `-version`，不信 `hyperframes doctor`），并保留"3 秒样例渲染"作为手动冒烟
+（见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md) 第 7 项，不放进每次启动）。
+`node --test` 覆盖纯函数：路径校验、Range 解析、`project.json` 迁移、进度解析、argv 构造、保留策略。
 
 ### 4.7 构建
 
 - `src/host/index.ts` → `index.js`（ESM，platform node，外部化内置模块）；`src/client/index.tsx` → `client.js`（CJS bundle，`react` 外部化，再包一层 `window.__ModuleLoader__.load({ id, factory })`）。
 - JSX 必须用 **classic transform**（`React.createElement`）：模块表只提供 `react`，没有 `react/jsx-runtime`。
-- `pnpm verify` = `tsc --noEmit` + build + `git diff --exit-code` + `node --check` + `node --test`。
+- `pnpm verify` = `tsc --noEmit` + `dsh boundary` + build + 产物形态 + `git diff --exit-code HEAD` + `node --check` + `node --test`（实际实现见 `scripts/verify.mjs`）。
 
 ## 5. 停止条件（kill criteria）
 
@@ -126,7 +132,7 @@ $DSH_HOME/cache/dsh-video-workbench/
 
 ## 6. 交付物
 
-`package.json` / `cordis.patch.yml` / `index.js` / `client.js`（构建产物）/ `locale/{zh,en}.json` / `icon.svg` / `README.md` / `INSTALL.md` / `docs/{COMPAT.md,UPGRADE-PLAYBOOK.md}` / `scripts/{install.mjs,smoke.mjs,build.mjs}` / `test/`。
+`package.json` / `cordis.patch.yml` / `index.js` / `client.js`（构建产物）/ `locale/{zh,en}.json` / `icon.svg` / `README.md` / `INSTALL.md` / `docs/{COMPAT.md,UPGRADE-PLAYBOOK.md,M0-FINDINGS.md,M1-PLAN.md,M2-PLAN.md,HANDOFF.md}` / `scripts/{install.mjs,check-selfcheck.mjs,build.mjs,verify.mjs}` / `test/`。
 
 ## 7. 节奏
 

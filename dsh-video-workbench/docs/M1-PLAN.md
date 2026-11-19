@@ -324,7 +324,7 @@ M1 版本只做能在 Host 内完成、不需要渲染的检查：
 | `projectsRoute` | `projects/<slug>/project.json` 可读；无项目或未配置时标记 `skipped` |
 
 输出 `{ ok, checks: [{ name, ok, skipped?, detail }] }`；`skipped` 的检查 `ok: true`，不影响
-整份报告。渲染、浏览器与 ffmpeg 检查留到 M2。自检可被取消：插件卸载或 `/selfcheck`
+整份报告。渲染、浏览器与 ffmpeg 检查留到 [M2](M2-PLAN.md)（运行时真实性检查 + 手动样例渲染冒烟）。自检可被取消：插件卸载或 `/selfcheck`
 调用方断开时，in-flight 探测会 `abort`（0.1.2 起）。
 
 ## 8. 测试计划

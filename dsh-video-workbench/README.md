@@ -25,6 +25,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.1.0（M1） | 类型检查 / 构建 / 产物形态 / 产物一致 / DSH 边界 / 82 项测试 | ✅ `node scripts/verify.mjs` 全绿（需产物已提交） |
 | v0.1.0（M1） | 运行中的 Desktop 热重载 Host 后启动自检 | ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
+| v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 升级到 rc.5 后重新安装 + 启动自检 | ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0（M1） | 桌面端完全重启后的客户端验收（▶/token/播放/Esc） | ⏳ **待执行**（见「M1 验收」） |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
@@ -150,7 +151,7 @@ Host 侧已在运行中的 Desktop 上验证（修改 profile 配置会热重载
 
 ## 兼容性
 
-- DSH：`0.2.2-rc.3`（精确匹配，升级后插件会停用等待复测，见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)）
+- DSH：`0.2.2-rc.5`（精确匹配，升级后插件会停用等待复测，见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)）
 - 平台：Windows Desktop；Web 与 macOS 未验证
 - 运行时（M2 起）：需要可用的 Chrome；本机实测**优先复用系统 Chrome**，自动下载不可用
 - Node：`>=20`；实测使用 DSH 托管运行时 `v24.21.0`

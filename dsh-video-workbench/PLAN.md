@@ -2,7 +2,7 @@
 
 > 状态：计划稿。本目录在 M0 开始前**不是**可安装插件，只有本文件。
 > 平台范围：**Windows + DSH Desktop 优先**；Web 与 macOS 未验证，README 必须写明。
-> 当前 DSH：`0.2.2-rc.3`；渲染器：HyperFrames `0.6.33`（固定，不跟随 DSH 升级）。
+> 当前 DSH：`0.2.2-rc.5`；渲染器：HyperFrames `0.6.33`（固定，不跟随 DSH 升级）。
 > M0 状态：**已完成**——渲染 10s@1080p = 15.2s、路由 206、`dsh-app://app` 下播放与拖动通过、取消无残留。结论见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 > M1 状态：**代码与文档完成**（v0.1.0：构建、适配层、项目模型/路由、`video_selfcheck`；`verify` 全绿 + 82 项测试；
 > 2026-11-19 修复客户端 bundle 重复注册等数据完整性问题）；

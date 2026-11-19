@@ -14,7 +14,7 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 - 已实机验证（Host 半区）：运行中的 Desktop 热重载后启动自检 **5/5**，项目路由真实读取 200
 - 待办：**客户端半区完全重启验收**（▶、token、播放/Esc、亮暗与窄窗口），清单见 [README](../README.md)「M1 验收」
 - 版本：`0.1.0`；分支 `main`（本轮提交尚未 push）
-- 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.3`
+- 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.5`（2026-11-19 从 `0.2.2-rc.3` 升级）
 
 ## 2. 一分钟上手
 
@@ -171,12 +171,22 @@ Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发�
 
 **剩余：客户端半区完全重启验收**（本轮会话运行在 DSH 内部，重启会终止会话，因此未执行）。
 
-⚠️ 环境现状（2026-11-19 修复数据损坏后）：desktop profile 已被重置——插件**未安装**
-（`node scripts/install.mjs --check` 报链接/bundles/dependencies 都缺失），`selfcheck.json` 不存在。
-2026-11-19 已手工补上 `cordis.patch.yml` 的 `video-workbench` 配置（`projectsRoot` / `exportDir`，
-备份 `cordis.patch.yml.bak-video-workbench-20261119-075340`）；插件行还不存在，所以该配置当前
-会被 loader「目标不存在，跳过」忽略。重启验收前先：完全退出 DSH → `node scripts/install.mjs`，
-然后重启（配置应随插件行一起生效，若被应用回写覆盖，按 [INSTALL.md](../INSTALL.md)「配置」重加）。
+⚠️ 环境现状（2026-11-19）：desktop profile 在修复数据损坏后重置过一次，现已重新装好——
+插件已 link 安装并登记在 `dsh.profile.bundles` / `dependencies`；`cordis.patch.yml` 已补
+`video-workbench` 配置（`projectsRoot` / `exportDir`，备份
+`cordis.patch.yml.bak-video-workbench-20261119-075340`）。
+
+DSH Desktop 已从 `0.2.2-rc.3` 升级到 **`0.2.2-rc.5`**：升级后插件一度因 `engines.dsh`
+精确匹配 `0.2.2-rc.3` 被 **拒绝激活**（`incompatible-version`，无路由、无 `selfcheck.json`）。
+现已把 `engines.dsh` 改为 `0.2.2-rc.5`；升级指引核对过（`v0.2.2-rc.3` / `v0.2.2-rc.4`
+两节都没有影响本插件的条目），并用 Inspect 在 rc.5 上核对了 `webServer.register` /
+`getOrigin`、`webserver/index-inject`、`conversation.input.left`、`shell.overlay`。
+**2026-11-19 16:28 重启后插件已正常加载**（rc.5，跑的是单次注册修复后的客户端 bundle）。
+首轮启动自检 4/5：`mediaProbe` 404——修复 profile 时
+`$DSH_HOME/cache/dsh-video-workbench/media/` 目录丢了。已把示例项目的
+`renders/v1.mp4` 复制回 `media/test.mp4`（1 548 444 字节），热重载后
+**16:30 自检 5/5 全绿**（路由挂载、token、media 206、`projectsRoot` 可写、项目路由 200）。
+注意热重载会重新生成 token：旧页面要刷新或重启后才能做客户端验收。
 
 1. 完全退出 DSH（含托盘图标），重新打开；
 2. 等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔、退出码 0；

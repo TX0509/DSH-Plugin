@@ -13,8 +13,9 @@ DSH 升级后，按本手册在 10 分钟内确认插件是否仍然健康，以
 
 ## 1. 升级后先看它是否被自动停用
 
-`package.json` 的 `engines.dsh` 当前是**精确版本**（例如 `0.2.2-rc.3`）。
+`package.json` 的 `engines.dsh` 当前是**精确版本**（例如 `0.2.2-rc.5`）。
 DSH 升级后，版本不满足会导致插件**拒绝激活**——这是有意的：宁可停用，也不要半坏着跑。
+插件管理器 `list_bundles` 里能看到 `error.code: "incompatible-version"` 与两侧版本号。
 
 判断方法：插件管理器里该插件显示未启用/激活失败，或 composer 左侧入口消失。
 

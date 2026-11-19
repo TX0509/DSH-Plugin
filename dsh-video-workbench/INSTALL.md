@@ -1,10 +1,10 @@
 # 安装与卸载
 
-适用范围：**DSH Desktop（Windows）**，DSH `0.2.2-rc.3`。Web 与 macOS 未验证。
+适用范围：**DSH Desktop（Windows）**，DSH `0.2.2-rc.5`。Web 与 macOS 未验证。
 
 ## 前置检查
 
-1. `package.json` 的 `engines.dsh` 必须覆盖你当前的 DSH 版本（当前固定为 `0.2.2-rc.3`）。
+1. `package.json` 的 `engines.dsh` 必须覆盖你当前的 DSH 版本（当前固定为 `0.2.2-rc.5`）。
    DSH 升级后插件会**拒绝激活**，这是有意的保护，见 [docs/UPGRADE-PLAYBOOK.md](docs/UPGRADE-PLAYBOOK.md)。
 2. Desktop 的 profile 由 Electron 应用独占管理，`dsh plugin --profile desktop ...` 会被拒绝。
 3. 安装或更新前，**完全退出 DSH（包括托盘图标）**；否则应用退出时可能回写 profile，覆盖安装结果。
@@ -99,7 +99,10 @@ node scripts/install.mjs --check
    ```
 
    期望 `"ok": true` 且 `checks` 里 5 项都为 `"ok": true`。若未配置 `projectsRoot`，
-   两项项目检查会失败并说明原因。
+   两项项目检查会失败并说明原因。若 `mediaProbe` 失败（404），说明 selfcheck 探测的
+   `test.mp4` 不在 `mediaRoot`：默认 `mediaRoot` 是
+   `$DSH_HOME\cache\dsh-video-workbench\media`，放一段可播放的 MP4 进去并命名为
+   `test.mp4`（或在 profile 配置里把 `mediaRoot` 指到已有媒体目录）即可。
 3. 页面 DevTools 控制台也可以手动复跑：
 
    ```js

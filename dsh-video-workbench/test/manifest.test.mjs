@@ -13,10 +13,13 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 
 /**
- * The tested DSH range. Widening it is a deliberate act: update this assertion,
- * `docs/COMPAT.md` and `docs/UPGRADE-PLAYBOOK.md` together.
+ * The tested DSH floor. This plugin is personal (not published), so the range is
+ * open-ended: every newer DSH activates it, and a breaking DSH release shows up
+ * as a failing startup self-check instead of a refused activation.
+ * Widening or narrowing it is a deliberate act: update this assertion and
+ * `docs/UPGRADE-PLAYBOOK.md` together.
  */
-const TESTED_DSH_RANGE = '>=0.2.2-rc.3 <0.2.3'
+const TESTED_DSH_RANGE = '>=0.2.2-rc.5'
 
 /** Files that must ship for the plugin to load and render. */
 const RUNTIME_FILES = [
@@ -51,11 +54,11 @@ function covers(entry, relative) {
   }
 }
 
-test('manifest: engines.dsh is the documented tested range, not an exact pin', () => {
+test('manifest: engines.dsh is the documented tested floor, not an exact pin', () => {
   assert.equal(manifest.engines?.dsh, TESTED_DSH_RANGE)
   assert.ok(manifest.engines?.node, 'engines.node must be declared')
   // An exact pin was what disabled the plugin on the rc.3 -> rc.5 nightly upgrade.
-  assert.match(manifest.engines.dsh, /[<>=^~]/u, 'engines.dsh must be a range')
+  assert.match(manifest.engines.dsh, /^>=/u, 'engines.dsh must be an open lower bound')
 })
 
 test('manifest: declares the bundle patch and the client platform', () => {

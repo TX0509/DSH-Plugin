@@ -112,10 +112,11 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
     但**客户端 bundle 仍只在启动时合成**，所以客户端验收必须完全重启。
     热重载会重新生成 token，旧页面要刷新或重启后才拿到新 token。
 14. **`engines.dsh` 用 `semver.satisfies(runtime, range, { includePrerelease: true })` 判定**
-    （`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`），即**预发布版本参与范围匹配**：
-    `>=0.2.2-rc.3 <0.2.3` 会放行 `0.2.3-rc.*`、挡住 `0.2.3` 正式版。要连预发布一起挡住得写
-    `<0.2.3-0`，但那样 nightly 每次预发布升级都会停用插件。改范围前用该函数实测，别凭直觉；
-    `test/manifest.test.mjs` 会锁定当前范围。
+    （`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`），即**预发布版本参与范围匹配**。
+    当前范围是无上限的 `>=0.2.2-rc.5`：`0.2.2-rc.5` 及以后全部放行，`rc.4` 及更早拒绝。
+    **代价与检测**：不再有"版本不匹配自动停用"的保护，DSH 破坏性升级会照常加载插件；
+    检测手段是启动自检（`node scripts/check-selfcheck.mjs`），失败就手动停用并复测。
+    改范围前用该函数实测，别凭直觉；`test/manifest.test.mjs` 会锁定当前范围。
 
 ## 5. 已确认的决定
 
@@ -126,7 +127,7 @@ M0 已验证：`dsh-app://app` 下路由可达、token 注入、Range 206、播�
 | 导出目录 | `exportDir` 可选，`D:\Terry\Videos\dsh-video\video-exports`；媒体/项目路由都不暴露 |
 | slug | 时间戳 `YYYYMMDD-HHmmss`，目录创建后不可变；标题存 `project.json` |
 | 自检报告 | `dataDir/selfcheck.json`，`dataDir` 默认 `$DSH_HOME/cache/dsh-video-workbench` |
-| `engines.dsh` | `>=0.2.2-rc.3 <0.2.3`（只覆盖实测过的 `0.2.2` 这条线；`0.2.3` 正式版留作复测检查点，详见 §4 第 14 条与 [COMPAT](COMPAT.md)） |
+| `engines.dsh` | `>=0.2.2-rc.5`（自用、不对外分发 → **不设上限**；升级不再被门禁停用，破坏性变更靠启动自检发现，详见 §4 第 14 条与 [COMPAT](COMPAT.md)） |
 | 运行时缓存 | 留默认位置（约 1.8 GB 在 C 盘），M2 不迁移 |
 | 生图 / TTS | 火山方舟 Seedream / 火山 TTS + 本地 Kokoro 兜底（M3 实现） |
 

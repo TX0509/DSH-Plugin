@@ -11,13 +11,15 @@ DSH 升级后，按本手册在 10 分钟内确认插件是否仍然健康，以
 - hyperframes 版本：`<runtime>/node_modules/hyperframes/package.json` 的 `version`
 - Windows 版本、Node 版本（托管运行时）
 
-## 1. 升级后先看它是否被自动停用
+## 1. 升级后先看插件是否还正常
 
-`package.json` 的 `engines.dsh` 当前是**精确版本**（例如 `0.2.2-rc.5`）。
-DSH 升级后，版本不满足会导致插件**拒绝激活**——这是有意的：宁可停用，也不要半坏着跑。
-插件管理器 `list_bundles` 里能看到 `error.code: "incompatible-version"` 与两侧版本号。
+本插件**自用、不对外分发**，`engines.dsh` 是无上限的 `>=0.2.2-rc.5`：
+DSH 升级后插件**不会**被版本门禁停用，所以"还活着"不等于"还好用"。
+升级后请立刻看启动自检（第 2 节第 1 步）——自检失败说明有 DSH 接口变了，先手动停用插件再排查。
 
-判断方法：插件管理器里该插件显示未启用/激活失败，或 composer 左侧入口消失。
+> 0.1.0 曾经精确锁版本，DSH 从 rc.3 升到 rc.5 时插件被自动停用
+> （插件管理器 `list_bundles` 里 `error.code: "incompatible-version"`）。
+> 那种保护现在被有意放弃，换取"升级不再打断使用"。
 
 ## 2. 10 分钟自检清单
 
@@ -79,40 +81,42 @@ DSH 耦合代码集中在两层适配器；升级时优先只改那一层（`ver
 
 如果改动扩散到业务代码，说明 adapters 层没拦住，需要重构后再继续。
 
-## 5. 放宽版本范围
+## 5. `engines.dsh` 版本门禁
 
-1. 第 2 节各项全过；
-2. 把 `engines.dsh` 从精确版本改成实测范围：只覆盖**真正测过**的版本线，不要一次放宽一个 minor；
-3. 写入 [COMPAT.md](COMPAT.md)，并在 README 的兼容性矩阵更新；
-4. 再跑一次 `node --test`（`test/manifest.test.mjs` 会锁定当前范围，改范围需同步改测试与文档）。
-
-### 已执行的放宽（2026-11-19）
+当前策略（2026-11-19 决定）：**本插件自用、不对外分发，范围不设上限**。
 
 ```json
-"dsh": ">=0.2.2-rc.3 <0.2.3"
+"dsh": ">=0.2.2-rc.5"
 ```
 
-依据：`0.2.2-rc.3`（M1 全链路）与 `0.2.2-rc.5`（升级后全链路）都实测通过，两者同属
-`0.2.2` 这条 patch 线；把范围锁定在这一条线上即可避免"nightly 每次升一个小版本就被停用"
-（本次 rc.3 → rc.5 就是这样的停用），同时把 `0.2.3` 正式版留作复测检查点。
+- 下限 = 当时实测通过的版本；DSH 升级到任何更新的版本（含正式版与大版本）都会**继续激活**，
+  不会因为 nightly 升版被停用。
+- **代价**：DSH 的破坏性变更**不再自动拦住**插件，可能"半坏着跑"。
+  **唯一的检测手段是启动自检**：升级后先 `node scripts/check-selfcheck.mjs`；
+  不过就手动在插件管理器里停用，按第 2 节排查。
+- 若某次升级自检不过：先停用插件 → 按第 2 节逐项排查 → 修好后把下限提到新版本，
+  同步改 `test/manifest.test.mjs` 里的 `TESTED_DSH_RANGE` 与 [COMPAT.md](COMPAT.md)。
 
 **判定语义（实测，别凭直觉）**：DSH 用
 `semver.satisfies(runtime, range, { includePrerelease: true })` 判定
 （`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`），
-**预发布版本参与范围匹配**。因此 `>=0.2.2-rc.3 <0.2.3` 的实际放行集合是：
+**预发布版本参与范围匹配**。`>=0.2.2-rc.5` 的实际效果：
 
 | 放行 | 拒绝 |
 | --- | --- |
-| `0.2.2-rc.3`…`0.2.2-rc.*`、`0.2.2`、`0.2.3-rc.*` | `< 0.2.2-rc.3`、`0.2.3`、`0.3.x` |
+| `0.2.2-rc.5` 及其后一切版本（`0.2.2`、`0.2.3-rc.*`、`0.2.3`、`0.3.x`、`1.0.0`…） | `< 0.2.2-rc.5`（含 `0.2.2-rc.3` / `rc.4`） |
 
-要连 `0.2.3-rc.*` 也挡住，得写 `<0.2.3-0`；但那样 nightly 每次预发布升级又会停用一次，
-不划算。改范围前用下面的脚本复核（用 DSH 自带的判定函数，不要装额外 semver）：
+改范围前用下面的脚本复核（用 DSH 自带的判定函数，不要装额外 semver）：
 
 ```powershell
 # 用 DSH 运行时（Electron）执行，路径按当前安装调整
 $env:ELECTRON_RUN_AS_NODE = '1'
-& $env:DSH_NODE_EXECUTABLE -e "import('file:///D:/DSH/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js').then(m => console.log(m.evaluatePluginCompatibility({ name: 'dsh-video-workbench', version: '0.1.1', engines: { dsh: '>=0.2.2-rc.3 <0.2.3' } }, {}, '0.2.2-rc.5')))"
+& $env:DSH_NODE_EXECUTABLE -e "import('file:///D:/DSH/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js').then(m => console.log(m.evaluatePluginCompatibility({ name: 'dsh-video-workbench', version: '0.1.1', engines: { dsh: '>=0.2.2-rc.5' } }, {}, '0.2.2-rc.5')))"
 ```
+
+> 历史：0.1.0 曾精确锁 `0.2.2-rc.3`，DSH 升到 rc.5 时插件被停用；0.1.1 先改为
+> `>=0.2.2-rc.3 <0.2.3`（当时争取"升级自动停用"的检查点），随后按"不对外分发"的决定
+> 改为无上限的 `>=0.2.2-rc.5`。
 
 ## 6. 回滚
 

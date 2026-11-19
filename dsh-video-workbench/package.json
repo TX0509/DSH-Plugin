@@ -1,6 +1,6 @@
 {
   "name": "dsh-video-workbench",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "短视频制作工作台：agent 出片、HyperFrames 渲染、浮层预览与微调。",
   "type": "module",
   "main": "index.js",

@@ -111,7 +111,7 @@ DSH 耦合代码集中在两层适配器；升级时优先只改那一层（`ver
 ```powershell
 # 用 DSH 运行时（Electron）执行，路径按当前安装调整
 $env:ELECTRON_RUN_AS_NODE = '1'
-& $env:DSH_NODE_EXECUTABLE -e "import('file:///D:/DSH/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js').then(m => console.log(m.evaluatePluginCompatibility({ name: 'dsh-video-workbench', version: '0.1.0', engines: { dsh: '>=0.2.2-rc.3 <0.2.3' } }, {}, '0.2.2-rc.5')))"
+& $env:DSH_NODE_EXECUTABLE -e "import('file:///D:/DSH/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js').then(m => console.log(m.evaluatePluginCompatibility({ name: 'dsh-video-workbench', version: '0.1.1', engines: { dsh: '>=0.2.2-rc.3 <0.2.3' } }, {}, '0.2.2-rc.5')))"
 ```
 
 ## 6. 回滚

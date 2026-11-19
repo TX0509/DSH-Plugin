@@ -28,6 +28,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 升级到 rc.5 后重新安装 + 启动自检 | ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 桌面端完全重启后的客户端验收 | ✅ 全部通过：单个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、视频聚焦时 Esc、错误态重试；亮/暗、侧栏展开/收起、窄窗口正常；无重复浮层、无 `slot entry crashed` |
+| v0.1.1 | 放宽 `engines.dsh` 到 `>=0.2.2-rc.3 <0.2.3`，并加 manifest 契约测试 | ✅ 产物与 0.1.0 逐字节相同（`verify` 的 artifact 校验通过），`verify` 全绿（86 项）；DSH 侧用其自带判定函数复核 rc.3/rc.4/rc.5/0.2.2/0.2.3-rc.1 放行、0.2.3 与 0.3.0 拒绝；运行中的插件未受影响 |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 

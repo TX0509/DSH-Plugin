@@ -24,7 +24,7 @@ cd D:\Terry\Code\DSH-Plugin\dsh-video-workbench
 # 构建（源码 src/ → 根目录 index.js / client.js）
 node scripts/build.mjs
 
-# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（99 项）
+# 全量校验：类型 → DSH 边界 → 构建 → 产物形态 → 产物一致 → 语法 → 测试（100 项）
 node scripts/verify.mjs
 
 # 只跑测试
@@ -62,7 +62,7 @@ dsh-video-workbench/
 ├── src/shared/                  # dsh.ts（手写 DSH 类型）、routes.ts（路径与 token 全局名）
 ├── index.js / client.js         # 构建产物（已提交，首行有生成标记）
 ├── scripts/{build,verify,install}.mjs
-├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest}.test.mjs   # 99 项
+├── test/{range,media,guard,projects,selfcheck,client-bundle,install,manifest}.test.mjs   # 100 项
 ├── docs/{M0-FINDINGS,M1-PLAN,UPGRADE-PLAYBOOK,COMPAT,HANDOFF}.md
 └── package.json / cordis.patch.yml / locale / icon.svg / README / INSTALL / LICENSE
 ```
@@ -158,7 +158,7 @@ M1 五个步骤全部完成（提交见 `git log --oneline`）：
 | 4 | `feat: 增加 video_selfcheck` | 5 项检查、`/selfcheck` 路由、`getOrigin()` |
 | 5 | `docs: 更新 M1 验收记录` | README/INSTALL/COMPAT/HANDOFF/M1-PLAN、版本 0.1.0、启动自检报告 |
 
-自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、99 项测试）。
+自动化验收已通过（`node scripts/verify.mjs`：类型、边界、构建、产物形态、产物一致、语法、100 项测试）。
 
 ### 2026-11-19 数据完整性修复（M1 之后、客户端重启验收之前）
 
@@ -173,7 +173,7 @@ v0.1.0 接入客户端时出现 DSH 客户端数据损坏（已由用户修复�
 | 写 `project.json` 失败会留下空项目目录；`writeProject` 不建子目录 | 抽 `createProjectLayout` / `persistProject`，失败只清理本次新建的目录 | `writeProject` 布局与根目录守卫用例 |
 | `install.mjs` 直写 profile `package.json`，可能被截断 | 临时文件 + `rename` 原子写；卸载也读回校验 | `test/install.test.mjs`（临时 `DSH_HOME`：`--check`/`--dry-run`/安装/卸载/路径逃逸） |
 
-测试从 65 项增至 99 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
+测试从 65 项增至 100 项（新增客户端 bundle 契约、安装脚本 `--check`/`--dry-run`/安装/卸载、
 项目写入失败路径、manifest 元数据等用例）。
 
 Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发热重载，插件自动跑启动自检）：
@@ -253,7 +253,7 @@ Get-Content "$env:USERPROFILE\.dsh\cache\dsh-video-workbench\selfcheck.json" -Ra
 - `exportDir` 目前只有配置与日志，写入逻辑在 M2；工作区目录 `D:\Terry\Videos\dsh-video`
   还没在 DSH 里注册成工作区（可选，仅影响浏览体验）。
 - **0.1.2 回归修复仍待客户端实机复测**：`index.js` / `client.js` 都变了（Range 语义、nosniff、
-  客户端改用共享路由常量、面板标题去掉 M0），Host 侧行为已由 99 项测试覆盖；完全重启后
+  客户端改用共享路由常量、面板标题去掉 M0），Host 侧行为已由 100 项测试覆盖；完全重启后
   请再跑一次 `node scripts/check-selfcheck.mjs` 并点开 ▶ 复看一遍。
 - 未做的低优先项：`createProject` 并发同名竞态（`listProjects` 轮询时可能短暂看到半个项目）、
   项目 `project.json` 未知字段静默忽略（有意为之，保持向前兼容）、面板文案未接 Client locale。

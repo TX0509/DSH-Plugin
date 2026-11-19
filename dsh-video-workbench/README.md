@@ -4,7 +4,7 @@ DSH Desktop 的短视频制作工作台插件。**M1（骨架与播放）已完�
 TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只读项目路由、`video_selfcheck` 已就位；
 渲染与素材/配音在 M2–M3。
 
-> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、99 项测试）；
+> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、100 项测试）；
 > 2026-11-19 在 DSH Desktop `0.2.2-rc.5` 上**完全重启后的实机验收全部通过**（Host 自检 5/5 +
 > 客户端 ▶/token/206/播放拖动/Esc/重试，单次模块注册生效）。下一阶段见 `PLAN.md` M2。
 
@@ -29,7 +29,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 升级到 rc.5 后重新安装 + 启动自检 | ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 桌面端完全重启后的客户端验收 | ✅ 全部通过：单个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、视频聚焦时 Esc、错误态重试；亮/暗、侧栏展开/收起、窄窗口正常；无重复浮层、无 `slot entry crashed` |
 | v0.1.1 | `engines.dsh` 改为 `>=0.2.2-rc.5`（自用、不设上限）+ manifest 契约测试 | ✅ 产物与 0.1.0 逐字节相同（`verify` 的 artifact 校验通过），`verify` 全绿；用 DSH 自带判定函数复核：rc.5 及以后全部放行、rc.4 及更早拒绝；运行中的插件未受影响 |
-| v0.1.2 | 回归审查后的修复批次（Range 语义、场景 id 唯一性、写盘与自检加固、`nosniff`、日志脱敏等） | ✅ 本地 `verify` 全绿、99 项测试；`index.js` / `client.js` 均有变更，**实机客户端需完全重启后复测**（见「M1 验收」） |
+| v0.1.2 | 回归审查后的修复批次（Range 语义、场景 id 唯一性、写盘与自检加固、`nosniff`、日志脱敏等） | ✅ 本地 `verify` 全绿、100 项测试；`index.js` / `client.js` 均有变更，**实机客户端需完全重启后复测**（见「M1 验收」） |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 
@@ -130,7 +130,7 @@ token 在 Host 启动时随机生成，通过 `webserver/index-inject` 的 `glob
 
 ```powershell
 cd dsh-video-workbench
-node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（99）
+node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 测试（100）
 node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
 ```
 
@@ -168,7 +168,7 @@ node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文
 ```sh
 node scripts/build.mjs     # src/ → 根目录 index.js / client.js
 node scripts/verify.mjs    # 一条命令跑完全部检查
-node --test                # 只跑测试（99 项）
+node --test                # 只跑测试（100 项）
 ```
 
 ## 未完成

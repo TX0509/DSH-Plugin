@@ -114,6 +114,8 @@ interface SelfcheckRouteOptions {
   requireToken: boolean
   mediaRoot: string
   projects: ProjectsConfig
+  /** Same sample the startup self-check probes; must not drift from it. */
+  mediaProbePath?: string
 }
 
 type RangeBounds = { start: number; end: number }
@@ -393,8 +395,11 @@ function createSelfcheckHandler(options: SelfcheckRouteOptions): (request: Incom
       return
     }
     const controller = new AbortController()
-    const abort = (): void => controller.abort()
-    request.once('close', abort)
+    // Only a disconnect before the response is written means "give up"; a close
+    // after `end()` is the normal completion of a kept-alive connection.
+    const abort = (): void => {
+      if (!response.writableEnded) controller.abort()
+    }
     response.once('close', abort)
     void runSelfcheck({ ...options, signal: controller.signal })
       .then((result) => {
@@ -407,7 +412,6 @@ function createSelfcheckHandler(options: SelfcheckRouteOptions): (request: Incom
         sendJson(response, 500, { ok: false, error: 'selfcheck-failed' })
       })
       .finally(() => {
-        request.off('close', abort)
         response.off('close', abort)
       })
   }
@@ -493,6 +497,7 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
         requireToken,
         mediaRoot,
         projects,
+        mediaProbePath: selfcheckMediaPath,
       }),
     }, 'video-workbench:selfcheck')
 
@@ -520,7 +525,10 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
           try {
             writeSelfcheckReport(dataDir, result)
           } catch (error) {
-            logger.error(`[video-workbench] 无法写入 selfcheck 报告: ${String(error)}`)
+            // fs error messages embed the absolute target path; log the code plus
+            // the (redacted) directory instead of the raw message.
+            const code = (error as NodeJS.ErrnoException).code ?? 'unknown'
+            logger.error(`[video-workbench] 无法写入 selfcheck 报告: ${code}（${redactPath(dataDir)}）`)
           }
           const failed = result.checks.filter((check) => !check.ok)
           const skipped = result.checks.filter((check) => check.skipped === true)
@@ -535,7 +543,10 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
           }
         }).catch((error: unknown) => {
           if (controller.signal.aborted) return
-          logger.error(`[video-workbench] selfcheck 异常: ${String(error)}`)
+          // Unexpected failure: name + message only (they carry the origin, not a
+          // user directory). The stack would be noise in the profile log.
+          const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+          logger.error(`[video-workbench] selfcheck 异常: ${text}`)
         })
       }, () => controller.abort())
     }

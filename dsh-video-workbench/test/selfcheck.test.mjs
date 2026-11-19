@@ -416,6 +416,50 @@ test('apply: unloading before the delay cancels the startup selfcheck', async ()
   }
 })
 
+test('apply: an unwritable data dir logs a redacted failure, not the raw path', async () => {
+  const roots = makeRoots()
+  // A file where the data dir should be: mkdir inside writeSelfcheckReport fails.
+  const badDataDir = path.join(os.tmpdir(), `dshvw-data-file-${process.pid}-${Date.now()}`)
+  writeFileSync(badDataDir, 'not a directory', 'utf8')
+  const messages = []
+  const ctx = {
+    logger: { info: (message) => messages.push(message), error: (message) => messages.push(message) },
+    effect: (callback) => {
+      callback()
+      return () => {}
+    },
+    inject(_dependencies, callback) {
+      callback({
+        on: () => () => {},
+        effect: (effect) => {
+          effect()
+          return () => {}
+        },
+        webServer: { register: () => () => {}, getOrigin: () => undefined },
+      })
+    },
+  }
+  apply(ctx, {
+    mediaRoot: roots.mediaRoot,
+    projectsRoot: roots.projectsRoot,
+    dataDir: badDataDir,
+    selfcheckDelayMs: 10,
+  })
+  try {
+    let message
+    for (let attempt = 0; attempt < 50 && message === undefined; attempt += 1) {
+      message = messages.find((entry) => entry.includes('无法写入 selfcheck 报告'))
+      if (message === undefined) await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    assert.ok(message, 'expected a write-failure log')
+    assert.equal(message.includes(badDataDir), false, 'the raw data dir must not be logged')
+    assert.match(message, /EEXIST|ENOTDIR|EACCES|EPERM|unknown/u)
+  } finally {
+    removeRoots(roots.mediaRoot, roots.projectsRoot)
+    rmSync(badDataDir, { force: true })
+  }
+})
+
 /**
  * Minimal Cordis context: records what apply() registers, and keeps the host
  * effect disposers so a test can unload the plugin.

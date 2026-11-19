@@ -1,8 +1,8 @@
 # M1 执行计划：骨架与播放
 
 > 状态：**步骤 1–5 已完成，M1 验收全部通过**（构建骨架、DSH 适配层、项目模型与项目路由、
-> `video_selfcheck`、文档与版本 0.1.0，当前版本 0.1.2）；`verify` 全绿，测试 99 项（2026-11-19
-> 修复客户端 bundle 重复注册等数据完整性问题后从 65 增至 99）。
+> `video_selfcheck`、文档与版本 0.1.0，当前版本 0.1.2）；`verify` 全绿，测试 100 项（2026-11-19
+> 修复客户端 bundle 重复注册等数据完整性问题后从 65 增至 100）。
 > 实机：DSH Desktop `0.2.2-rc.5` 完全重启后 Host 自检 5/5；客户端 ▶/token/206/播放拖动/
 > Esc/重试、亮暗/侧栏/窄窗口、单次模块注册全部通过（2026-11-19，见第 10 节）。
 > 本文替代 [PLAN.md](../PLAN.md) 里 M1 那一行，给出可以照着执行的步骤、目录、命令与验收标准。
@@ -233,7 +233,7 @@ export function registerOverlay(ctx: ClientContext, id: string, component: unkno
 | `fps` | number | 24 / 25 / 30 / 60 |
 | `style` | `{ theme: string; captionStyle: string }` | 字符串枚举，M1 只存储不渲染 |
 | `scenes` | array | 1–50 项 |
-| `scenes[].id` | string | `^s[0-9]+$` |
+| `scenes[].id` | string | `^s(0\|[1-9][0-9]{0,2})$`（`s0`–`s999`，无前导零），且**必须唯一**（0.1.2 起） |
 | `scenes[].text` | string | 0–500 字符 |
 | `scenes[].durationSec` | number | `> 0`，最多 3 位小数 |
 | `scenes[].media` | `{ kind: 'none'\|'image'\|'video'; asset?: string }` | `asset` 必须是项目内相对路径 |
@@ -354,7 +354,7 @@ M1 版本只做能在 Host 内完成、不需要渲染的检查：
 
 自动化项已验证（`node scripts/verify.mjs`）：
 
-- [x] `pnpm verify` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、测试 99 项）
+- [x] `pnpm verify` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、测试 100 项）
 - [x] `node --check index.js client.js` 通过
 - [x] 产物已提交，且与源码一致（verify 校验）
 - [x] 仓库无 `node_modules` 提交

@@ -1074,8 +1074,9 @@ function createSelfcheckHandler(options) {
       return;
     }
     const controller = new AbortController();
-    const abort = () => controller.abort();
-    request2.once("close", abort);
+    const abort = () => {
+      if (!response.writableEnded) controller.abort();
+    };
     response.once("close", abort);
     void runSelfcheck({ ...options, signal: controller.signal }).then((result) => {
       if (controller.signal.aborted) return;
@@ -1084,7 +1085,6 @@ function createSelfcheckHandler(options) {
       if (controller.signal.aborted) return;
       sendJson(response, 500, { ok: false, error: "selfcheck-failed" });
     }).finally(() => {
-      request2.off("close", abort);
       response.off("close", abort);
     });
   };
@@ -1144,7 +1144,8 @@ function apply(ctx, config = {}) {
         token,
         requireToken,
         mediaRoot,
-        projects
+        projects,
+        mediaProbePath: selfcheckMediaPath
       })
     }, "video-workbench:selfcheck");
     if (config.selfcheckOnStartup !== false) {
@@ -1164,7 +1165,8 @@ function apply(ctx, config = {}) {
           try {
             writeSelfcheckReport(dataDir, result);
           } catch (error) {
-            logger.error(`[video-workbench] \u65E0\u6CD5\u5199\u5165 selfcheck \u62A5\u544A: ${String(error)}`);
+            const code = error.code ?? "unknown";
+            logger.error(`[video-workbench] \u65E0\u6CD5\u5199\u5165 selfcheck \u62A5\u544A: ${code}\uFF08${redactPath(dataDir)}\uFF09`);
           }
           const failed = result.checks.filter((check) => !check.ok);
           const skipped = result.checks.filter((check) => check.skipped === true);
@@ -1176,7 +1178,8 @@ function apply(ctx, config = {}) {
           }
         }).catch((error) => {
           if (controller.signal.aborted) return;
-          logger.error(`[video-workbench] selfcheck \u5F02\u5E38: ${String(error)}`);
+          const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+          logger.error(`[video-workbench] selfcheck \u5F02\u5E38: ${text}`);
         });
       }, () => controller.abort());
     }

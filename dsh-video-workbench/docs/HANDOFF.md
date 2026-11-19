@@ -10,10 +10,10 @@ agent 在对话里出片（素材 → 配音 → HyperFrames 合成 → 本地�
 
 - 仓库：`D:\Terry\Code\DSH-Plugin`（只放插件，不改 DSH 本体）
 - 插件目录：`dsh-video-workbench/`
-- 当前阶段：**M0 完成；M1 代码/文档完成**（构建、适配层、项目模型与路由、`video_selfcheck`、文档）
-- 已实机验证（Host 半区）：运行中的 Desktop 热重载后启动自检 **5/5**，项目路由真实读取 200
-- 待办：**客户端半区完全重启验收**（▶、token、播放/Esc、亮暗与窄窗口），清单见 [README](../README.md)「M1 验收」
-- 版本：`0.1.0`；分支 `main`（本轮提交尚未 push）
+- 当前阶段：**M1 完成**（构建、适配层、项目模型与路由、`video_selfcheck`、双端实机验收；下一步 M2 渲染管线）
+- 已实机验证：DSH Desktop `0.2.2-rc.5` 完全重启后 Host 自检 **5/5** + 客户端半区**全部通过**（2026-11-19）
+- 待办：M2（见 §7）；Web / macOS 仍未验证
+- 版本：`0.1.0`；分支 `main`（有未 push 的提交）
 - 验收环境：Windows 11 + DSH Desktop `0.2.2-rc.5`（2026-11-19 从 `0.2.2-rc.3` 升级）
 
 ## 2. 一分钟上手
@@ -129,7 +129,7 @@ Desktop profile 的配置（`cordis.patch.yml` 里的 `projectsRoot` / `exportDi
 写入，可能被退出时回写覆盖；**profile 被重置后需要按 [INSTALL.md](../INSTALL.md)「配置」重新加一次**。
 当前 profile 状态见 §6 末尾「环境现状」。
 
-## 6. M1 状态与剩余验收
+## 6. M1 验收记录（已完成）
 
 M1 五个步骤全部完成（提交见 `git log --oneline`）：
 
@@ -169,11 +169,21 @@ Host 半区已在**运行中的 Desktop** 上实测（改 profile 配置触发�
   （`project.json` + `renders/v1.mp4` 样例），可直接用于播放验收。
 - 复跑命令：`node scripts/check-selfcheck.mjs`（退出码 0 表示全绿）。
 
-**剩余：客户端半区完全重启验收**（本轮会话运行在 DSH 内部，重启会终止会话，因此未执行）。
+### M1 客户端验收结论（2026-11-19，完全重启后**全部通过**）
+
+在 DSH Desktop `0.2.2-rc.5` 上完全退出并重新打开后逐项实测：
+
+- 单个 ▶ 入口；`tokenPresent: true`、`ping.ok: true`、`media.status: 206`；
+- 播放、拖动 seek、视频聚焦时 Esc 关闭、错误态"重试"；
+- 亮/暗主题、侧栏展开/收起、窄窗口正常；
+- 无重复浮层、DevTools 无 `slot entry crashed` —— **单次模块注册修复生效**。
+
+Host 自检报告（完全重启后 16:32:16）：5/5，即 §6 上面那份 `selfcheck.json`。
+**M1 至此全部完成**，剩余验收项清空；下一步是 M2（见 §7）。
 
 ⚠️ 环境现状（2026-11-19）：desktop profile 在修复数据损坏后重置过一次，现已重新装好——
 插件已 link 安装并登记在 `dsh.profile.bundles` / `dependencies`；`cordis.patch.yml` 已补
-`video-workbench` 配置（`projectsRoot` / `exportDir`，备份
+`video-workbench` 配置（`projectsRoot` / `exportDir` / `selfcheckOnStartup`，备份
 `cordis.patch.yml.bak-video-workbench-20261119-075340`）。
 
 DSH Desktop 已从 `0.2.2-rc.3` 升级到 **`0.2.2-rc.5`**：升级后插件一度因 `engines.dsh`
@@ -181,20 +191,10 @@ DSH Desktop 已从 `0.2.2-rc.3` 升级到 **`0.2.2-rc.5`**：升级后插件一�
 现已把 `engines.dsh` 改为 `0.2.2-rc.5`；升级指引核对过（`v0.2.2-rc.3` / `v0.2.2-rc.4`
 两节都没有影响本插件的条目），并用 Inspect 在 rc.5 上核对了 `webServer.register` /
 `getOrigin`、`webserver/index-inject`、`conversation.input.left`、`shell.overlay`。
-**2026-11-19 16:28 重启后插件已正常加载**（rc.5，跑的是单次注册修复后的客户端 bundle）。
 首轮启动自检 4/5：`mediaProbe` 404——修复 profile 时
-`$DSH_HOME/cache/dsh-video-workbench/media/` 目录丢了。已把示例项目的
-`renders/v1.mp4` 复制回 `media/test.mp4`（1 548 444 字节），热重载后
-**16:30 自检 5/5 全绿**（路由挂载、token、media 206、`projectsRoot` 可写、项目路由 200）。
-注意热重载会重新生成 token：旧页面要刷新或重启后才能做客户端验收。
-
-1. 完全退出 DSH（含托盘图标），重新打开；
-2. 等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔、退出码 0；
-3. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、播放/拖动、Esc、错误态重试；
-   **这一轮同时是"单次注册"修复的验收**：DevTools 确认插件只挂载一次、无重复 ▶，
-   控制台无 `slot entry crashed`；
-4. 亮/暗主题、侧栏展开/收起、窄窗口快速过一遍；
-5. 把结果补进 `README.md` 的「已验证」表与 `docs/COMPAT.md`。
+`$DSH_HOME/cache/dsh-video-workbench/media/` 目录丢了；已把示例项目的
+`renders/v1.mp4` 复制回 `media/test.mp4`（1 548 444 字节）。之后完全重启，自检 5/5、
+客户端验收全部通过。
 
 也可以在页面 DevTools 控制台手动复跑：
 

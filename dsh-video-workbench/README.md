@@ -4,8 +4,9 @@ DSH Desktop 的短视频制作工作台插件。当前处于 **M1（骨架与播
 TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只读项目路由、`video_selfcheck` 已就位；
 渲染与素材/配音在 M2–M3。
 
-> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、82 项测试）。
-> 桌面端**重启后的实机验收尚未执行**，清单见下方「M1 验收」。
+> **M1 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、82 项测试）；
+> 2026-11-19 在 DSH Desktop `0.2.2-rc.5` 上**完全重启后的实机验收全部通过**（Host 自检 5/5 +
+> 客户端 ▶/token/206/播放拖动/Esc/重试，单次模块注册生效）。下一阶段见 `PLAN.md` M2。
 
 ![视频工作台浮层](docs/m0-overlay.png)
 
@@ -26,7 +27,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型与只�
 | v0.1.0（M1） | 运行中的 Desktop 热重载 Host 后启动自检 | ✅ 5/5：路由挂载、token 一致、媒体 206、`projectsRoot` 可写、项目路由 200 |
 | v0.1.0（M1） | 项目路由真实读取 | ✅ `20261119-003934/project.json` → 200（自检内，含 `renders/v1.mp4` 样例） |
 | v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 升级到 rc.5 后重新安装 + 启动自检 | ✅ 5/5：路由挂载、token、media 206（`bytes 0-99/1548444`）、`projectsRoot` 可写、项目路由 200 |
-| v0.1.0（M1） | 桌面端完全重启后的客户端验收（▶/token/播放/Esc） | ⏳ **待执行**（见「M1 验收」） |
+| v0.1.0 + 2026-11-19 修复 @ DSH `0.2.2-rc.5` | 桌面端完全重启后的客户端验收 | ✅ 全部通过：单个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、视频聚焦时 Esc、错误态重试；亮/暗、侧栏展开/收起、窄窗口正常；无重复浮层、无 `slot entry crashed` |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 
@@ -127,27 +128,18 @@ node scripts/verify.mjs              # 类型 + DSH 边界 + 构建 + 产物形�
 node scripts/check-selfcheck.mjs    # 打印最近一次启动自检报告（文件不存在时退出码 1）
 ```
 
-Host 侧已在运行中的 Desktop 上验证（修改 profile 配置会热重载 Host 半区，插件随即自动跑一次自检）：
+2026-11-19 已在 DSH Desktop `0.2.2-rc.5` 上完成（完全退出并重新打开 DSH 后实测）：
 
-- 启动自检 5/5：`routeMounted`（匿名 401 / 带 token 200）、`tokenRequired`、`mediaProbe`
-  （Range 0-99 → 206）、`projectsRootWritable`、`projectsRoute`（读取
+- **Host 自检 5/5**：`routeMounted`（匿名 401 / 带 token 200）、`tokenRequired`、`mediaProbe`
+  （Range 0-99 → 206 `bytes 0-99/1548444`）、`projectsRootWritable`、`projectsRoute`（读取
   `20261119-003934/project.json` → 200）；报告在
   `$DSH_HOME\cache\dsh-video-workbench\selfcheck.json`。
+- **客户端**：composer 左侧只有一个 ▶、`tokenPresent: true`、`media.status: 206`、播放与拖动、
+  视频聚焦时 Esc 关闭、错误态可"重试"全部通过；亮/暗主题、侧栏展开/收起、窄窗口正常；
+  无重复浮层、DevTools 无 `slot entry crashed`（单次模块注册修复生效）。
 - 示例项目：`<projectsRoot>/20261119-003934/`（含 `renders/v1.mp4` 样例，可直接用项目路由播放）。
 
-剩余（客户端 bundle 只在启动时合成，需要**完全退出并重新打开 DSH**）：
-
-> 注意：2026-11-19 修复数据损坏后，desktop profile 已重置——插件尚未安装；`projectsRoot` /
-> `exportDir` 已补进 profile 的 `cordis.patch.yml`（插件未安装时该条会被跳过）。重启验收前先
-> 完全退出 DSH，执行 `node scripts/install.mjs`，再重启。
-
-1. 重启后等约 3 秒，`node scripts/check-selfcheck.mjs` 应输出 5 个 ✔ 且退出码 0；
-2. 点开 composer 左侧 ▶：`tokenPresent: true`、`media.status: 206`、能播放与拖动、
-   视频聚焦时 Esc 关闭、错误态可"重试"；
-3. 亮色/暗色、侧栏展开/收起、窄窗口快速过一遍（完整矩阵留 M6）。
-
-本轮客户端 bundle 已改为**单次模块注册**（修复 v0.1.0 的客户端数据损坏问题），
-重启验收时请一并确认：composer 左侧只有一个 ▶、无重复浮层、DevTools 无 `slot entry crashed`。
+复跑：`node scripts/check-selfcheck.mjs`（新启动后约 3 秒生成报告）。
 
 ## 兼容性
 

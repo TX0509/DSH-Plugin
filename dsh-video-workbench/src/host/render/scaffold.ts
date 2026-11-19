@@ -60,7 +60,12 @@ export function scaffoldCompositionHtml(input: ScaffoldInput): string {
     : input.scenes
   const duration = scenes.reduce((total, scene) => total + scene.durationSec, 0)
   let cursor = 0
-  const windows = scenes.map((scene) => {
+  const windows = scenes.map((scene, index) => {
+    // An empty scene would render a black frame; fall back to the project title
+    // (first scene) or a scene label so the clip always has visible content.
+    const text = scene.text.trim() === ''
+      ? (index === 0 ? input.title : `分镜 ${String(index + 1)}`)
+      : scene.text
     const start = cursor
     cursor += scene.durationSec
     const media = scene.media?.kind === 'image' && scene.media.asset !== undefined
@@ -71,7 +76,7 @@ export function scaffoldCompositionHtml(input: ScaffoldInput): string {
     return [
       `      <section class="scene clip" id="scene-${escapeHtml(scene.id)}" data-scene="${escapeHtml(scene.id)}" data-start="${start}" data-duration="${scene.durationSec}">`,
       media,
-      `        <p class="text">${escapeHtml(scene.text)}</p>`,
+      `        <p class="text">${escapeHtml(text)}</p>`,
       '      </section>',
     ].join('\n')
   })
@@ -87,6 +92,8 @@ export function scaffoldCompositionHtml(input: ScaffoldInput): string {
       html, body { margin: 0; padding: 0; width: ${size.width}px; height: ${size.height}px; overflow: hidden; }
       /* Generic family only: a named web font makes hyperframes fetch Google Fonts. */
       body { background: #101418; color: #f5f5f5; font-family: sans-serif; }
+      body::before { content: ""; position: fixed; inset: 0; background: radial-gradient(circle at 50% 38%, #1b2a4a 0%, #101418 62%); }
+      .scene .text { position: relative; text-shadow: 0 4px 24px rgb(0 0 0 / 45%); }
       .scene { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 48px; animation: sceneIn .45s ease-out both;
                align-items: center; justify-content: center; padding: 96px; box-sizing: border-box; }
       .media { max-width: 100%; max-height: 70%; object-fit: contain; }

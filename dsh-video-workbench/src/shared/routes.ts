@@ -33,3 +33,6 @@ export const RENDER_PATH = '/api/video-workbench/render'
 
 /** Exact route returning the newest-first project list (M2 UI). */
 export const PROJECTS_LIST_PATH = '/api/video-workbench/projects-list'
+
+/** Exact route creating a 10 s demo project (M2 UI, POST only). */
+export const PROJECTS_CREATE_PATH = '/api/video-workbench/projects-create'

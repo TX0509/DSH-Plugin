@@ -30,6 +30,36 @@ export function readToken(request: IncomingMessage): string | undefined {
   return undefined
 }
 
+/** Read a small JSON body; resolves `undefined` when it is missing or unusable. */
+export function readJsonBody(
+  request: IncomingMessage,
+  limit = 16 * 1024,
+): Promise<Record<string, unknown> | undefined> {
+  return new Promise((resolve) => {
+    let size = 0
+    const chunks: Buffer[] = []
+    request.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > limit) {
+        resolve(undefined)
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    request.on('end', () => {
+      try {
+        const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+        resolve(typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined)
+      } catch {
+        // An empty body is valid for "use the defaults".
+        resolve(undefined)
+      }
+    })
+    request.on('error', () => resolve(undefined))
+  })
+}
+
 /**
  * Answer the request when it must not proceed:
  * - wrong token → 401

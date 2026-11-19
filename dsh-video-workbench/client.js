@@ -49,6 +49,7 @@ var RUNTIME_PATH = "/api/video-workbench/runtime";
 var RUNTIME_INSTALL_PATH = "/api/video-workbench/runtime/install";
 var RENDER_PATH = "/api/video-workbench/render";
 var PROJECTS_LIST_PATH = "/api/video-workbench/projects-list";
+var PROJECTS_CREATE_PATH = "/api/video-workbench/projects-create";
 
 // src/client/adapters/context.ts
 function readToken() {
@@ -109,7 +110,7 @@ var CSS = [
   ".dshvw-trigger:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}",
   ".dshvw-trigger:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}",
   ".dshvw-backdrop{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:calc(var(--dsh-frame-top-clearance, 0px) + 16px) 16px 16px;background:color-mix(in srgb, var(--dsw-alias-bg-base) 55%, transparent);pointer-events:auto}",
-  ".dshvw-card{display:flex;flex-direction:column;gap:12px;width:min(760px, calc(100vw - 32px));max-height:calc(100vh - 48px);padding:16px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv3);overflow:auto}",
+  ".dshvw-card{display:flex;flex-direction:column;gap:12px;width:min(760px, calc(100vw - 32px));max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);padding:16px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv3);overflow:auto}",
   ".dshvw-head{display:flex;align-items:center;gap:8px;justify-content:space-between}",
   ".dshvw-title{margin:0;font-size:14px;font-weight:600}",
   ".dshvw-sub{margin:0;font-size:12px;color:var(--dsw-alias-label-tertiary)}",
@@ -117,7 +118,7 @@ var CSS = [
   ".dshvw-close:hover{background:var(--dsw-alias-interactive-bg-hover)}",
   ".dshvw-close:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}",
   ".dshvw-close:disabled{opacity:.5;cursor:default}",
-  ".dshvw-video{width:100%;height:auto;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}",
+  ".dshvw-video{display:block;width:auto;max-width:100%;max-height:min(52vh, 460px);margin:0 auto;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}",
   ".dshvw-error-row{display:flex;gap:8px;align-items:flex-start}",
   ".dshvw-error{flex:1;margin:0;padding:8px;border-radius:8px;border:1px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font-size:12px}",
   ".dshvw-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
@@ -273,6 +274,27 @@ function Panel() {
       clearInterval(timer);
     };
   }, [open, job?.id, job?.status]);
+  const reloadProjects = async (selectId) => {
+    const list = await getJson(withToken(PROJECTS_LIST_PATH));
+    setProjects(list);
+    if (selectId !== void 0) setProjectId(selectId);
+  };
+  const createDemoProject = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const created = await getJson(
+        withToken(PROJECTS_CREATE_PATH),
+        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "\u793A\u4F8B\u9879\u76EE" }) }
+      );
+      setJob(void 0);
+      await reloadProjects(created.project.id);
+    } catch (failure) {
+      fail(`\u65B0\u5EFA\u793A\u4F8B\u9879\u76EE\u5931\u8D25\uFF1A${String(failure)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
   const installRuntime = async () => {
     setBusy(true);
     setError("");
@@ -368,15 +390,19 @@ function Panel() {
     ]),
     h("div", { className: "dshvw-row", key: "projects" }, [
       h("span", { key: "label", className: "dshvw-row-label" }, "\u9879\u76EE"),
-      projects === void 0 ? h("span", { key: "loading" }, "\u52A0\u8F7D\u4E2D\u2026") : projects.state !== "ready" ? h("span", { key: "unset" }, "\u9879\u76EE\u529F\u80FD\u672A\u542F\u7528\uFF08\u672A\u914D\u7F6E projectsRoot\uFF09") : projects.projects.length === 0 ? h("span", { key: "empty" }, "\u6682\u65E0\u9879\u76EE") : h("select", {
+      projects === void 0 ? h("span", { key: "loading" }, "\u52A0\u8F7D\u4E2D\u2026") : projects.state !== "ready" ? h("span", { key: "unset" }, "\u9879\u76EE\u529F\u80FD\u672A\u542F\u7528\uFF08\u672A\u914D\u7F6E projectsRoot\uFF09") : projects.projects.length === 0 ? h("span", { key: "empty" }, "\u6682\u65E0\u9879\u76EE\uFF0C\u5148\u65B0\u5EFA\u4E00\u4E2A") : h("select", {
         key: "select",
         className: "dshvw-select",
         value: projectId,
-        onChange: (event) => setProjectId(event.target.value)
+        onChange: (event) => {
+          setProjectId(event.target.value);
+          setJob(void 0);
+          setError("");
+        }
       }, projects.projects.map((project) => h(
         "option",
         { key: project.id, value: project.id },
-        `${project.title}\uFF08${String(project.scenes)} \u5206\u955C\uFF09`
+        `${project.title}\uFF08${String(project.scenes)} \u5206\u955C${typeof project.durationSec === "number" ? ` \xB7 ${String(Number(project.durationSec.toFixed(2)))}s` : ""}\uFF09`
       ))),
       h("button", {
         key: "render",
@@ -394,7 +420,17 @@ function Panel() {
         onClick: () => {
           void cancelRender();
         }
-      }, "\u53D6\u6D88") : null
+      }, "\u53D6\u6D88") : null,
+      projects?.state === "ready" ? h("button", {
+        key: "create",
+        type: "button",
+        className: "dshvw-close",
+        disabled: busy || rendering,
+        onClick: () => {
+          void createDemoProject();
+        },
+        title: "\u521B\u5EFA 2 \u4E2A\u5206\u955C\u3001\u5408\u8BA1 10 \u79D2\u7684\u793A\u4F8B\u9879\u76EE"
+      }, "\u65B0\u5EFA 10 \u79D2\u793A\u4F8B") : null
     ]),
     job === void 0 ? null : h("div", { className: "dshvw-row", key: "progress" }, [
       h(

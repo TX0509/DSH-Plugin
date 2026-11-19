@@ -4,6 +4,7 @@ import type { ClientSlotContext } from '../shared/dsh'
 import {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_CREATE_PATH,
   PROJECTS_LIST_PATH,
   PROJECTS_PATH,
   RENDER_PATH,
@@ -40,7 +41,7 @@ const CSS = [
   '.dshvw-trigger:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
   '.dshvw-trigger:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
   '.dshvw-backdrop{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:calc(var(--dsh-frame-top-clearance, 0px) + 16px) 16px 16px;background:color-mix(in srgb, var(--dsw-alias-bg-base) 55%, transparent);pointer-events:auto}',
-  '.dshvw-card{display:flex;flex-direction:column;gap:12px;width:min(760px, calc(100vw - 32px));max-height:calc(100vh - 48px);padding:16px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv3);overflow:auto}',
+  '.dshvw-card{display:flex;flex-direction:column;gap:12px;width:min(760px, calc(100vw - 32px));max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);padding:16px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv3);overflow:auto}',
   '.dshvw-head{display:flex;align-items:center;gap:8px;justify-content:space-between}',
   '.dshvw-title{margin:0;font-size:14px;font-weight:600}',
   '.dshvw-sub{margin:0;font-size:12px;color:var(--dsw-alias-label-tertiary)}',
@@ -48,7 +49,7 @@ const CSS = [
   '.dshvw-close:hover{background:var(--dsw-alias-interactive-bg-hover)}',
   '.dshvw-close:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
   '.dshvw-close:disabled{opacity:.5;cursor:default}',
-  '.dshvw-video{width:100%;height:auto;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}',
+  '.dshvw-video{display:block;width:auto;max-width:100%;max-height:min(52vh, 460px);margin:0 auto;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}',
   '.dshvw-error-row{display:flex;gap:8px;align-items:flex-start}',
   '.dshvw-error{flex:1;margin:0;padding:8px;border-radius:8px;border:1px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font-size:12px}',
   '.dshvw-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}',
@@ -71,6 +72,7 @@ interface ProjectSummary {
   id: string
   title: string
   scenes: number
+  durationSec?: number
 }
 
 interface ProjectList {
@@ -257,6 +259,28 @@ function Panel(): React.ReactElement | null {
     }
   }, [open, job?.id, job?.status])
 
+  const reloadProjects = async (selectId?: string): Promise<void> => {
+    const list = await getJson<ProjectList>(withToken(PROJECTS_LIST_PATH))
+    setProjects(list)
+    if (selectId !== undefined) setProjectId(selectId)
+  }
+
+  const createDemoProject = async (): Promise<void> => {
+    setBusy(true)
+    setError('')
+    try {
+      const created = await getJson<{ project: { id: string; title: string } }>(
+        withToken(PROJECTS_CREATE_PATH),
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: '示例项目' }) },
+      )
+      setJob(undefined)
+      await reloadProjects(created.project.id)
+    } catch (failure) {
+      fail(`新建示例项目失败：${String(failure)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
   const installRuntime = async (): Promise<void> => {
     setBusy(true)
     setError('')
@@ -373,14 +397,22 @@ function Panel(): React.ReactElement | null {
         : projects.state !== 'ready'
           ? h('span', { key: 'unset' }, '项目功能未启用（未配置 projectsRoot）')
           : projects.projects.length === 0
-            ? h('span', { key: 'empty' }, '暂无项目')
+            ? h('span', { key: 'empty' }, '暂无项目，先新建一个')
             : h('select', {
               key: 'select',
               className: 'dshvw-select',
               value: projectId,
-              onChange: (event: React.ChangeEvent<HTMLSelectElement>) => setProjectId(event.target.value),
+              onChange: (event: React.ChangeEvent<HTMLSelectElement>) => {
+                setProjectId(event.target.value)
+                // A finished job belongs to the previous project; never show its
+                // clip under another project's name.
+                setJob(undefined)
+                setError('')
+              },
             }, projects.projects.map((project) => h('option', { key: project.id, value: project.id },
-              `${project.title}（${String(project.scenes)} 分镜）`))),
+              `${project.title}（${String(project.scenes)} 分镜${
+                typeof project.durationSec === 'number' ? ` · ${String(Number(project.durationSec.toFixed(2)))}s` : ''
+              }）`))),
       h('button', {
         key: 'render',
         type: 'button',
@@ -395,6 +427,16 @@ function Panel(): React.ReactElement | null {
           className: 'dshvw-close',
           onClick: () => { void cancelRender() },
         }, '取消')
+        : null,
+      projects?.state === 'ready'
+        ? h('button', {
+          key: 'create',
+          type: 'button',
+          className: 'dshvw-close',
+          disabled: busy || rendering,
+          onClick: () => { void createDemoProject() },
+          title: '创建 2 个分镜、合计 10 秒的示例项目',
+        }, '新建 10 秒示例')
         : null,
     ]),
 

@@ -9,6 +9,7 @@ import type { HostContext, IndexInjection } from '../shared/dsh'
 import {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_CREATE_PATH,
   PROJECTS_LIST_PATH,
   PROJECTS_PATH,
   RENDER_PATH,
@@ -29,7 +30,7 @@ import type { ProjectsConfig, ProjectsState } from './projects/root'
 import { resolveProjectsRoot } from './projects/root'
 import { buildRenderEnv } from './runtime/env'
 import { chromeCandidates, pickChrome } from './runtime/locate'
-import { createProjectsListHandler } from './projects/routes'
+import { createProjectCreateHandler, createProjectsListHandler } from './projects/routes'
 import { createRenderHandler } from './render/routes'
 import { createJobManager } from './render/jobs'
 import type { RenderQuality } from './render/args'
@@ -46,6 +47,7 @@ import { readSelfcheckReport, writeSelfcheckReport } from './selfcheck-report'
 export {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_CREATE_PATH,
   PROJECTS_LIST_PATH,
   PROJECTS_PATH,
   RENDER_PATH,
@@ -711,6 +713,11 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
       handler: createProjectsListHandler({ token, requireToken, projects }),
     }, 'video-workbench:projects-list')
 
+    server.registerRoute({
+      kind: 'exact',
+      path: PROJECTS_CREATE_PATH,
+      handler: createProjectCreateHandler({ token, requireToken, projects }),
+    }, 'video-workbench:projects-create')
     // The checks inside need `getOrigin()`, which only answers after the
     // listener binds, so it is resolved per request.
     server.registerRoute({

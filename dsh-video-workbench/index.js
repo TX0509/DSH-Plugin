@@ -16,6 +16,7 @@ var RUNTIME_PATH = "/api/video-workbench/runtime";
 var RUNTIME_INSTALL_PATH = "/api/video-workbench/runtime/install";
 var RENDER_PATH = "/api/video-workbench/render";
 var PROJECTS_LIST_PATH = "/api/video-workbench/projects-list";
+var PROJECTS_CREATE_PATH = "/api/video-workbench/projects-create";
 
 // src/host/adapters/logger.ts
 import os from "node:os";
@@ -99,6 +100,30 @@ function readToken(request2) {
   const header = request2.headers[TOKEN_HEADER];
   if (typeof header === "string" && header.length > 0) return header;
   return void 0;
+}
+function readJsonBody(request2, limit = 16 * 1024) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    request2.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        resolve(void 0);
+        request2.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request2.on("end", () => {
+      try {
+        const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        resolve(typeof value === "object" && value !== null ? value : void 0);
+      } catch {
+        resolve(void 0);
+      }
+    });
+    request2.on("error", () => resolve(void 0));
+  });
 }
 function rejectRequest(request2, response, options) {
   if (options.requireToken && !options.tokenMatches) {
@@ -799,6 +824,15 @@ function listProjects(root) {
 }
 
 // src/host/projects/routes.ts
+function demoScenes() {
+  return [
+    { id: "s1", text: "\u7B2C\u4E00\u6BB5\u753B\u9762", durationSec: 4, media: { kind: "none" }, voice: { speed: 1 }, captions: { enabled: true } },
+    { id: "s2", text: "\u7B2C\u4E8C\u6BB5\u753B\u9762", durationSec: 6, media: { kind: "none" }, voice: { speed: 1 }, captions: { enabled: true } }
+  ];
+}
+function sumDuration(project) {
+  return Number(project.scenes.reduce((total, scene) => total + scene.durationSec, 0).toFixed(3));
+}
 function createProjectsListHandler(options) {
   return (request2, response) => {
     if (rejectRequest(request2, response, {
@@ -811,11 +845,47 @@ function createProjectsListHandler(options) {
       sendJson(response, 200, { state: projects.state, projects: [], invalid: [] });
       return;
     }
-    const listed = listProjects(projects.root);
+    const root = projects.root;
+    const listed = listProjects(root);
+    const withDuration = listed.projects.map((entry) => {
+      const detail = readProject(root, entry.id);
+      return { ...entry, durationSec: detail.ok ? sumDuration(detail.project) : 0 };
+    });
     sendJson(response, 200, {
       state: "ready",
-      projects: listed.projects,
+      projects: withDuration,
       invalid: listed.invalid.map((entry) => ({ id: entry.id, errors: entry.errors.slice(0, 5) }))
+    });
+  };
+}
+function createProjectCreateHandler(options) {
+  return (request2, response) => {
+    if (rejectRequest(request2, response, {
+      requireToken: options.requireToken,
+      tokenMatches: tokenEquals(readToken(request2), options.token),
+      allow: ["POST"]
+    })) return;
+    const { projects } = options;
+    if (projects.state !== "ready" || projects.root === void 0) {
+      sendJson(response, 409, { error: "projects-unset" });
+      return;
+    }
+    const root = projects.root;
+    void readJsonBody(request2, 4 * 1024).then((body) => {
+      const title = typeof body?.title === "string" && body.title.trim() !== "" ? body.title.trim() : "\u793A\u4F8B\u9879\u76EE";
+      const created = createProject(root, { title, scenes: demoScenes() });
+      if (!created.ok) {
+        sendJson(response, 400, { error: "invalid-project", errors: created.errors });
+        return;
+      }
+      sendJson(response, 201, {
+        project: {
+          id: created.project.id,
+          title: created.project.title,
+          scenes: created.project.scenes.length,
+          durationSec: sumDuration(created.project)
+        }
+      });
     });
   };
 }
@@ -833,7 +903,7 @@ var CANCEL_ERROR_STATUS = {
 function authorized(request2, options) {
   return tokenEquals(readToken(request2), options.token);
 }
-function readJsonBody(request2, limit) {
+function readJsonBody2(request2, limit) {
   return new Promise((resolve) => {
     let size = 0;
     const chunks = [];
@@ -868,7 +938,7 @@ function createRenderHandler(options) {
         tokenMatches: authorized(request2, options),
         allow: ["POST"]
       })) return;
-      void readJsonBody(request2, limit).then((body) => {
+      void readJsonBody2(request2, limit).then((body) => {
         const projectId = typeof body?.projectId === "string" ? body.projectId : "";
         if (projectId === "") {
           sendJson(response, 400, { error: "invalid-request" });
@@ -1230,14 +1300,15 @@ function scaffoldCompositionHtml(input) {
   const scenes = input.scenes.length === 0 ? [{ id: "s1", text: input.title, durationSec: 3, media: { kind: "none" } }] : input.scenes;
   const duration = scenes.reduce((total, scene) => total + scene.durationSec, 0);
   let cursor = 0;
-  const windows = scenes.map((scene) => {
+  const windows = scenes.map((scene, index) => {
+    const text = scene.text.trim() === "" ? index === 0 ? input.title : `\u5206\u955C ${String(index + 1)}` : scene.text;
     const start = cursor;
     cursor += scene.durationSec;
     const media = scene.media?.kind === "image" && scene.media.asset !== void 0 ? `<img class="media" src="${escapeHtml(assetUrl(scene.media.asset))}" alt="" />` : scene.media?.kind === "video" && scene.media.asset !== void 0 ? `<video class="media" src="${escapeHtml(assetUrl(scene.media.asset))}" muted></video>` : "";
     return [
       `      <section class="scene clip" id="scene-${escapeHtml(scene.id)}" data-scene="${escapeHtml(scene.id)}" data-start="${start}" data-duration="${scene.durationSec}">`,
       media,
-      `        <p class="text">${escapeHtml(scene.text)}</p>`,
+      `        <p class="text">${escapeHtml(text)}</p>`,
       "      </section>"
     ].join("\n");
   });
@@ -1252,6 +1323,8 @@ function scaffoldCompositionHtml(input) {
       html, body { margin: 0; padding: 0; width: ${size.width}px; height: ${size.height}px; overflow: hidden; }
       /* Generic family only: a named web font makes hyperframes fetch Google Fonts. */
       body { background: #101418; color: #f5f5f5; font-family: sans-serif; }
+      body::before { content: ""; position: fixed; inset: 0; background: radial-gradient(circle at 50% 38%, #1b2a4a 0%, #101418 62%); }
+      .scene .text { position: relative; text-shadow: 0 4px 24px rgb(0 0 0 / 45%); }
       .scene { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 48px; animation: sceneIn .45s ease-out both;
                align-items: center; justify-content: center; padding: 96px; box-sizing: border-box; }
       .media { max-width: 100%; max-height: 70%; object-fit: contain; }
@@ -2723,6 +2796,11 @@ function apply(ctx, config = {}) {
     }, "video-workbench:projects-list");
     server.registerRoute({
       kind: "exact",
+      path: PROJECTS_CREATE_PATH,
+      handler: createProjectCreateHandler({ token, requireToken, projects })
+    }, "video-workbench:projects-create");
+    server.registerRoute({
+      kind: "exact",
       path: SELFCHECK_PATH,
       handler: createSelfcheckHandler({
         getOrigin: () => server.origin(),
@@ -2783,6 +2861,7 @@ export {
   MEDIA_PATH,
   MIN_NODE_MAJOR,
   PING_PATH,
+  PROJECTS_CREATE_PATH,
   PROJECTS_LIST_PATH,
   PROJECTS_PATH,
   PROJECT_FILE,

@@ -362,6 +362,9 @@ M0 日志实测形态（含 ANSI 转义与 `\r`）：
 | Chrome 能自动找到 | **错误**：hyperframes 在 Windows 不扫描系统 Chrome，会尝试联网下载 | 渲染 env 必须带 `HYPERFRAMES_BROWSER_PATH`（已由 `chromePick` 注入） |
 | 任何时长都能精确 | `totalFrames = ceil(duration × fps)` | 想精确到 `10.000s` 必须让 `duration × fps` 为整数（脚手架按分镜时长求和） |
 | 用命名 web 字体 | 非通用字族会联网抓 Google Fonts | 脚手架只用 `sans-serif`；自定义字体需本地 `@font-face` |
+| 项目一定已有文案 | M1 示例项目分镜文案为空 → 成片全黑 | 脚手架对空文案兜底（首镜用项目标题、其余用「分镜 N」） |
+| 播放器按宽度自适应即可 | 9:16 成片按宽度铺满会有 1900+ px 高，弹层超出屏幕 | 成片限高（`max-height:min(52vh,460px)`），弹层用 `100dvh` 封顶 |
+| 项目由用户自己创建 | UI 里没有创建入口，无法在应用内完成 10s 验收 | 新增 `POST /projects-create`（2 分镜/合计 10s 示例）+ 浮层「新建 10 秒示例」按钮 |
 
 ## 15. 开工前的一次性核对（步骤 0 内容预告）
 

@@ -337,3 +337,16 @@ test('parseFfprobeJson: reads duration and frame size, ignores junk', () => {
   assert.equal(parseFfprobeJson('not json'), undefined)
   assert.equal(parseFfprobeJson(JSON.stringify({ streams: [], format: {} })), undefined)
 })
+
+test('scaffoldCompositionHtml: empty scene text falls back to the title, never a blank frame', () => {
+  const html = scaffoldCompositionHtml({
+    title: 'M1 验收项目',
+    aspect: '9:16',
+    scenes: [
+      { id: 's1', text: '', durationSec: 3, media: { kind: 'none' } },
+      { id: 's2', text: '   ', durationSec: 2, media: { kind: 'none' } },
+    ],
+  })
+  assert.match(html, /M1 验收项目/u, 'first empty scene shows the title')
+  assert.match(html, /分镜 2/u, 'later empty scenes get a label')
+})

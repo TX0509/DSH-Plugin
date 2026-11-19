@@ -16,6 +16,7 @@ import test from 'node:test'
 
 import {
   PING_PATH,
+  PROJECTS_CREATE_PATH,
   PROJECTS_LIST_PATH,
   PROJECTS_PATH,
   apply,
@@ -116,9 +117,9 @@ async function listen(server) {
 }
 
 /** One request, one connection: see the note in media.test.mjs. */
-function call(origin, target, { headers = {} } = {}) {
+function call(origin, target, { headers = {}, method = 'GET', body } = {}) {
   return new Promise((resolve, reject) => {
-    const request = httpRequest(`${origin}${target}`, { headers, agent: false }, (response) => {
+    const request = httpRequest(`${origin}${target}`, { headers, method, agent: false }, (response) => {
       const chunks = []
       response.on('data', (chunk) => chunks.push(chunk))
       response.on('end', () => resolve({
@@ -130,7 +131,7 @@ function call(origin, target, { headers = {} } = {}) {
     })
     request.setTimeout(5000, () => request.destroy(new Error('request timed out')))
     request.on('error', reject)
-    request.end()
+    request.end(body)
   })
 }
 
@@ -564,5 +565,20 @@ test('projects-list route: 401 without token, newest-first list with token', asy
     assert.equal(body.state, 'ready')
     assert.deepEqual(body.projects.map((entry) => entry.id), [project.id])
     assert.deepEqual(body.invalid, [])
+  })
+})
+
+test('projects-create route: 401 without token, then a 10 s demo project', async () => {
+  await withPlugin(async ({ origin, token }) => {
+    assert.equal((await call(origin, PROJECTS_CREATE_PATH, { method: 'POST' })).status, 401)
+    const response = await call(origin, `${PROJECTS_CREATE_PATH}?t=${token}`, { method: 'POST' })
+    assert.equal(response.status, 201)
+    const body = JSON.parse(response.body.toString())
+    assert.equal(body.project.scenes, 2)
+    assert.equal(body.project.durationSec, 10)
+    const list = await call(origin, `${PROJECTS_LIST_PATH}?t=${token}`)
+    const listed = JSON.parse(list.body.toString())
+    const created = listed.projects.find((entry) => entry.id === body.project.id)
+    assert.equal(created.durationSec, 10)
   })
 })

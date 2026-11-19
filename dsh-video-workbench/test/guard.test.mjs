@@ -7,6 +7,7 @@ import test from 'node:test'
 import {
   MEDIA_PATH,
   PING_PATH,
+  PROJECTS_CREATE_PATH,
   PROJECTS_LIST_PATH,
   PROJECTS_PATH,
   RENDER_PATH,
@@ -110,7 +111,7 @@ test('apply registers every route and the index injector', () => {
 
   assert.deepEqual(
     stub.routes.map((route) => [route.kind, route.path]).sort(),
-    [['exact', PING_PATH], ['exact', SELFCHECK_PATH], ['exact', RUNTIME_PATH], ['exact', RUNTIME_INSTALL_PATH], ['exact', PROJECTS_LIST_PATH], ['prefix', MEDIA_PATH]].sort(),
+    [['exact', PING_PATH], ['exact', SELFCHECK_PATH], ['exact', RUNTIME_PATH], ['exact', RUNTIME_INSTALL_PATH], ['exact', PROJECTS_LIST_PATH], ['exact', PROJECTS_CREATE_PATH], ['prefix', MEDIA_PATH]].sort(),
   )
   assert.deepEqual(stub.listeners.map((entry) => entry.name), ['webserver/index-inject'])
   assert.equal(stub.messages.some((message) => message.includes('filesystem root')), false)
@@ -130,7 +131,7 @@ test('apply falls back to a safe root when mediaRoot is a filesystem root', () =
   const stub = stubContext()
   apply(stub.ctx, { mediaRoot: path.parse(process.cwd()).root, selfcheckOnStartup: false })
 
-  assert.equal(stub.routes.length, 6)
+  assert.equal(stub.routes.length, 7)
   const message = stub.messages.find((entry) => entry.includes('filesystem root'))
   assert.ok(message, 'expected a filesystem-root error log')
   // Logs are redacted: the configured and fallback paths appear shortened, and
@@ -172,6 +173,7 @@ test('apply mounts every route declared in shared/routes', () => {
       MEDIA_PATH,
       PROJECTS_PATH,
       PROJECTS_LIST_PATH,
+      PROJECTS_CREATE_PATH,
       SELFCHECK_PATH,
       RUNTIME_PATH,
       RUNTIME_INSTALL_PATH,

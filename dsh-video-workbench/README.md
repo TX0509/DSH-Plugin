@@ -5,7 +5,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型、只�
 渲染运行时供给、渲染任务（进度/取消/超时）、成片保留与导出、左侧栏工作台面板已就位；
 素材与配音在 M3。
 
-> **M2 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、161 项测试）；
+> **M2 状态**：`node scripts/verify.mjs` 全绿（类型、DSH 边界、构建、产物形态、产物一致、语法、170 项测试）；
 > 实机渲染冒烟通过：`node scripts/render-smoke.mjs` → **10.000s / 1080×1920 / 300 帧**，约 13 秒完成，
 > `renders/index.json` 与 `exportDir` 副本均生成。客户端 UI 需完全重启 DSH 后验证（见「M2 验收」）。
 
@@ -36,6 +36,7 @@ TypeScript + esbuild 构建、DSH 适配层、`project.json` 项目模型、只�
 | v0.2.0（M2） | 取消 / 超时 / 孤儿清理 / 保留策略（假 CLI + 真机进程） | ✅ 单元与集成用例覆盖；取消后无残留进程与 `.tmp` |
 | v0.2.0（M2） | 渲染 UI（运行时状态、安装、项目选择、进度、取消、播放成片） | ✅ 2026-11-19 实机跑通 10s 成片 |
 | v0.2.1 | 入口从 composer 移到左侧栏面板列表、图标改为场记板（去掉红底播放键） | ⏳ 待重启后确认 |
+| v0.2.2 | 桌面宿主安全加固：启动孤儿清理先校验 PID 命令行（hyperframes + projectId）归属，渲染仍归另一存活 DSH 实例时跳过；渲染/安装/项目路由的异步错误改为返回 HTTP 错误而不是抛进宿主进程 | ✅ 170 项测试全绿；需完全重启 DSH 生效 |
 
 > 详细数据与发现见 [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md)。
 
@@ -185,7 +186,7 @@ cd dsh-video-workbench
 自动化与 Host 侧已通过：
 
 ```powershell
-| node scripts/verify.mjs | # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 161 项测试 |
+| node scripts/verify.mjs | # 类型 + DSH 边界 + 构建 + 产物形态 + 产物一致 + 语法 + 170 项测试 |
 | node scripts/render-smoke.mjs | # 真实渲染冒烟：10s / 1080x1920 / 300 帧（需要已安装运行时） |
 node scripts/check-selfcheck.mjs # 启动自检报告（应为 8 项）
 ```
@@ -220,7 +221,7 @@ node scripts/check-selfcheck.mjs # 启动自检报告（应为 8 项）
 ```sh
 | node scripts/build.mjs | # src/ → 根目录 index.js / client.js |
 | node scripts/verify.mjs | # 一条命令跑完全部检查 |
-| node --test | # 只跑测试（161 项） |
+| node --test | # 只跑测试（170 项） |
 node scripts/render-smoke.mjs # 真实渲染冒烟（需要运行时）
 ```
 

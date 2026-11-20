@@ -51,5 +51,7 @@ test('docs: markdown tables keep their pipe delimiters', () => {
 
 test('docs: the README acceptance table lists the current version', () => {
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
-  assert.match(readme, /^\| v0\.2\.1 \|/mu, 'README 需要记录 v0.2.1')
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const version = String(manifest.version).replaceAll('.', '\\.')
+  assert.match(readme, new RegExp(`^\\| v${version} \\|`, 'mu'), `README 需要记录 v${String(manifest.version)}`)
 })

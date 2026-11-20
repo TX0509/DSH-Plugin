@@ -886,6 +886,8 @@ function createProjectCreateHandler(options) {
           durationSec: sumDuration(created.project)
         }
       });
+    }).catch(() => {
+      if (!response.headersSent) sendJson(response, 500, { error: "internal" });
     });
   };
 }
@@ -950,6 +952,8 @@ function createRenderHandler(options) {
           return;
         }
         sendJson(response, 202, { job: result.job });
+      }).catch(() => {
+        if (!response.headersSent) sendJson(response, 500, { error: "internal" });
       });
       return;
     }
@@ -1208,7 +1212,9 @@ function readJobRegistries(dataDir) {
         pid: raw.pid,
         projectId: typeof raw.projectId === "string" ? raw.projectId : "",
         startedAt: typeof raw.startedAt === "string" ? raw.startedAt : "",
-        command: typeof raw.command === "string" ? raw.command : ""
+        command: typeof raw.command === "string" ? raw.command : "",
+        ...typeof raw.ownerPid === "number" && Number.isSafeInteger(raw.ownerPid) ? { ownerPid: raw.ownerPid } : {},
+        ...typeof raw.cliPath === "string" && raw.cliPath !== "" ? { cliPath: raw.cliPath } : {}
       });
     } catch {
       corrupt.push(file);
@@ -1263,18 +1269,99 @@ async function killTree(pid, options = {}) {
     }
   }
 }
+function readCommandOutput(command, args, spawnImpl, timeoutMs = 5e3) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawnImpl(command, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    } catch {
+      resolve(void 0);
+      return;
+    }
+    let out = "";
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      out += chunk;
+    });
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+      }
+      resolve(void 0);
+    }, timeoutMs);
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve(void 0);
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      const text = out.trim();
+      resolve(text === "" ? void 0 : text);
+    });
+  });
+}
+function processCommandLine(pid, options = {}) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(void 0);
+  const platform = options.platform ?? process.platform;
+  const spawnImpl = options.spawnImpl ?? spawn;
+  if (platform === "linux") {
+    try {
+      return Promise.resolve(fs5.readFileSync(`/proc/${String(pid)}/cmdline`, "utf8").split("\0").join(" ").trim());
+    } catch {
+      return Promise.resolve(void 0);
+    }
+  }
+  if (platform === "darwin") {
+    return readCommandOutput("ps", ["-o", "command=", "-p", String(pid)], spawnImpl);
+  }
+  if (platform === "win32") {
+    return readCommandOutput("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `(Get-CimInstance Win32_Process -Filter "ProcessId=${String(pid)}").CommandLine`
+    ], spawnImpl);
+  }
+  return Promise.resolve(void 0);
+}
+var normalizeCommand = (value) => value.toLowerCase().replaceAll("\\", "/");
+function isRenderCommandLine(commandLine, entry) {
+  const text = normalizeCommand(commandLine);
+  if (!text.includes("hyperframes")) return false;
+  if (entry.projectId !== "" && !text.includes(entry.projectId.toLowerCase())) return false;
+  if (entry.cliPath !== void 0 && !text.includes(normalizeCommand(entry.cliPath))) return false;
+  return true;
+}
 async function reapOrphans(dataDir, options = {}) {
   const { entries, corrupt } = readJobRegistries(dataDir);
   const result = { killed: [], removed: [...corrupt], skipped: [] };
+  const alive = options.isAlive ?? isPidAlive;
+  const kill = options.kill ?? ((pid) => killTree(pid, options));
+  const readCommandLine = options.commandLineFor ?? ((pid) => processCommandLine(pid, options));
   for (const entry of entries) {
-    const file = jobRegistryPath(dataDir, entry.id);
-    if (entry.pid !== process.pid && isPidAlive(entry.pid)) {
-      const killed = await killTree(entry.pid, options);
-      if (killed) result.killed.push(entry.id);
-      else result.skipped.push(entry.id);
+    if (entry.ownerPid !== void 0 && entry.ownerPid !== process.pid && alive(entry.ownerPid)) {
+      result.skipped.push(entry.id);
+      continue;
+    }
+    if (entry.pid !== process.pid && alive(entry.pid)) {
+      let verified = false;
+      try {
+        const commandLine = await readCommandLine(entry.pid);
+        verified = commandLine !== void 0 && isRenderCommandLine(commandLine, entry);
+      } catch {
+        verified = false;
+      }
+      if (verified) {
+        const killed = await kill(entry.pid);
+        if (killed) result.killed.push(entry.id);
+        else result.skipped.push(entry.id);
+      } else {
+        result.skipped.push(entry.id);
+      }
     }
     try {
-      fs5.rmSync(file, { force: true });
+      fs5.rmSync(jobRegistryPath(dataDir, entry.id), { force: true });
       result.removed.push(entry.id);
     } catch {
       result.skipped.push(entry.id);
@@ -1489,7 +1576,11 @@ function installedVersion(runtimeDir, packageName) {
 async function installRuntime(options) {
   const exec = options.exec ?? defaultExec;
   const paths = runtimePaths(options.runtimeDir);
-  fs6.mkdirSync(paths.dir, { recursive: true });
+  try {
+    fs6.mkdirSync(paths.dir, { recursive: true });
+  } catch {
+    return { ok: false, error: "runtime-dir-unwritable", log: "" };
+  }
   const log = [];
   const append = (line) => {
     log.push(line);
@@ -1873,7 +1964,12 @@ function createJobManager(options) {
       }
     }
     const rendersDir = rendersDirOf(view.projectId);
-    fs7.mkdirSync(rendersDir, { recursive: true });
+    try {
+      fs7.mkdirSync(rendersDir, { recursive: true });
+    } catch {
+      finishFailure(id, "renders-dir-failed");
+      return;
+    }
     let version = 1;
     try {
       version = nextRenderVersion(fs7.readdirSync(rendersDir));
@@ -1951,7 +2047,9 @@ function createJobManager(options) {
           pid,
           projectId: view.projectId,
           startedAt: now().toISOString(),
-          command: path12.basename(spec.command)
+          command: path12.basename(spec.command),
+          ownerPid: process.pid,
+          cliPath
         });
       } catch {
       }
@@ -2701,6 +2799,9 @@ function apply(ctx, config = {}) {
           installError = result.error;
           logger.error(`[video-workbench] \u5B89\u88C5\u8FD0\u884C\u65F6\u5931\u8D25\uFF1A${result.error}\uFF08\u65E5\u5FD7 ${redactPath(path15.join(runtimeDir, "install.log"))}\uFF09`);
         }
+      }).catch((error) => {
+        installError = error instanceof Error ? error.message : String(error);
+        logger.error(`[video-workbench] \u5B89\u88C5\u8FD0\u884C\u65F6\u5F02\u5E38\uFF1A${installError}`);
       }).finally(() => {
         installing = false;
       });
@@ -2763,7 +2864,8 @@ function apply(ctx, config = {}) {
       }, "video-workbench:render");
       if (typeof ctx.effect === "function") {
         ctx.effect(() => () => {
-          void jobs.dispose();
+          void jobs.dispose().catch(() => {
+          });
         }, "video-workbench:render-jobs");
       }
     }
@@ -2901,6 +3003,7 @@ export {
   installRuntime,
   isFilesystemRoot,
   isPidAlive,
+  isRenderCommandLine,
   jobRegistryPath,
   killTree,
   listProjects,
@@ -2917,6 +3020,7 @@ export {
   persistProject,
   pickChrome,
   pickNode,
+  processCommandLine,
   readJobRegistries,
   readProject,
   readSelfcheckReport,

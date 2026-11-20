@@ -103,8 +103,10 @@ export {
 } from './render/outputs'
 export {
   isPidAlive,
+  isRenderCommandLine,
   jobRegistryPath,
   killTree,
+  processCommandLine,
   readJobRegistries,
   reapOrphans,
   removeJobRegistry,
@@ -605,6 +607,9 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
           installError = result.error
           logger.error(`[video-workbench] 安装运行时失败：${result.error}（日志 ${redactPath(path.join(runtimeDir, 'install.log'))}）`)
         }
+      }).catch((error: unknown) => {
+        installError = error instanceof Error ? error.message : String(error)
+        logger.error(`[video-workbench] 安装运行时异常：${installError}`)
       }).finally(() => {
         installing = false
       })
@@ -673,7 +678,9 @@ export function apply(ctx: HostContext, config: PluginConfig = {}): void {
       }, 'video-workbench:render')
       if (typeof ctx.effect === 'function') {
         ctx.effect(() => () => {
-          void jobs.dispose()
+          void jobs.dispose().catch(() => {
+            // Disposal failures are best effort; the host is unloading already.
+          })
         }, 'video-workbench:render-jobs')
       }
     }

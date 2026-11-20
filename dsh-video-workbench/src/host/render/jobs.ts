@@ -350,7 +350,14 @@ export function createJobManager(options: JobManagerOptions): JobManager {
       }
     }
     const rendersDir = rendersDirOf(view.projectId)
-    fs.mkdirSync(rendersDir, { recursive: true })
+    try {
+      fs.mkdirSync(rendersDir, { recursive: true })
+    } catch {
+      // A read-only or full disk must fail this job, not throw through the
+      // route's promise (an unhandled rejection inside the DSH host process).
+      finishFailure(id, 'renders-dir-failed')
+      return
+    }
     let version = 1
     try {
       version = nextRenderVersion(fs.readdirSync(rendersDir))
@@ -434,6 +441,8 @@ export function createJobManager(options: JobManagerOptions): JobManager {
           projectId: view.projectId,
           startedAt: now().toISOString(),
           command: path.basename(spec.command),
+          ownerPid: process.pid,
+          cliPath,
         })
       } catch {
         // Registry is for crash recovery only.

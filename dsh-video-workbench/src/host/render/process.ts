@@ -14,6 +14,17 @@ export interface JobRegistryEntry {
   startedAt: string
   /** One line for humans; never used for matching. */
   command: string
+  /**
+   * DSH process that spawned the render. A second live DSH (web + desktop, or
+   * two windows) owns its own jobs; crash recovery must leave them alone.
+   */
+  ownerPid?: number
+  /**
+   * Absolute hyperframes CLI path the child runs. Recovery only kills a PID
+   * whose command line still proves it is that render: after a crash the PID
+   * may already belong to an unrelated process.
+   */
+  cliPath?: string
 }
 
 const REGISTRY_DIR = 'render-jobs'
@@ -67,6 +78,10 @@ export function readJobRegistries(dataDir: string): { entries: JobRegistryEntry[
         projectId: typeof raw.projectId === 'string' ? raw.projectId : '',
         startedAt: typeof raw.startedAt === 'string' ? raw.startedAt : '',
         command: typeof raw.command === 'string' ? raw.command : '',
+        ...(typeof raw.ownerPid === 'number' && Number.isSafeInteger(raw.ownerPid)
+          ? { ownerPid: raw.ownerPid }
+          : {}),
+        ...(typeof raw.cliPath === 'string' && raw.cliPath !== '' ? { cliPath: raw.cliPath } : {}),
       })
     } catch {
       corrupt.push(file)
@@ -140,25 +155,148 @@ export interface ReapResult {
   skipped: string[]
 }
 
+/** How to read one process's command line; injectable so tests stay hermetic. */
+export type CommandLineReader = (pid: number) => Promise<string | undefined>
+
+/** Run a small probe program and return its trimmed stdout. */
+function readCommandOutput(
+  command: string,
+  args: string[],
+  spawnImpl: typeof spawn,
+  timeoutMs = 5000,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawnImpl(command, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch {
+      resolve(undefined)
+      return
+    }
+    let out = ''
+    child.stdout?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => { out += chunk })
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // The probe failed and its result is already discarded.
+      }
+      resolve(undefined)
+    }, timeoutMs)
+    child.on('error', () => {
+      clearTimeout(timer)
+      resolve(undefined)
+    })
+    child.on('close', () => {
+      clearTimeout(timer)
+      const text = out.trim()
+      resolve(text === '' ? undefined : text)
+    })
+  })
+}
+
 /**
- * Startup orphan scan: every registry entry whose process is gone (or alive but
- * not ours to keep) is killed and deleted. The current process is never killed.
+ * Read one process's command line, or `undefined` when this platform cannot
+ * report it. Used only to prove that a crashed render's PID still names that
+ * render; an unknown answer must never justify a kill.
+ */
+export function processCommandLine(
+  pid: number,
+  options: { platform?: NodeJS.Platform; spawnImpl?: typeof spawn } = {},
+): Promise<string | undefined> {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(undefined)
+  const platform = options.platform ?? process.platform
+  const spawnImpl = options.spawnImpl ?? spawn
+  if (platform === 'linux') {
+    try {
+      return Promise.resolve(fs.readFileSync(`/proc/${String(pid)}/cmdline`, 'utf8').split('\0').join(' ').trim())
+    } catch {
+      return Promise.resolve(undefined)
+    }
+  }
+  if (platform === 'darwin') {
+    return readCommandOutput('ps', ['-o', 'command=', '-p', String(pid)], spawnImpl)
+  }
+  if (platform === 'win32') {
+    return readCommandOutput('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `(Get-CimInstance Win32_Process -Filter "ProcessId=${String(pid)}").CommandLine`,
+    ], spawnImpl)
+  }
+  return Promise.resolve(undefined)
+}
+
+const normalizeCommand = (value: string): string => value.toLowerCase().replaceAll('\\', '/')
+
+/**
+ * Whether a command line still belongs to the recorded render. Both the
+ * hyperframes CLI and the project id must appear: `node.exe` alone is not
+ * enough, because PID reuse often lands on another node process.
+ */
+export function isRenderCommandLine(commandLine: string, entry: JobRegistryEntry): boolean {
+  const text = normalizeCommand(commandLine)
+  if (!text.includes('hyperframes')) return false
+  if (entry.projectId !== '' && !text.includes(entry.projectId.toLowerCase())) return false
+  if (entry.cliPath !== undefined && !text.includes(normalizeCommand(entry.cliPath))) return false
+  return true
+}
+
+export interface ReapOptions {
+  platform?: NodeJS.Platform
+  spawnImpl?: typeof spawn
+  /** Defaults to {@link processCommandLine}. */
+  commandLineFor?: CommandLineReader
+  /** Defaults to {@link isPidAlive}. */
+  isAlive?: (pid: number) => boolean
+  /** Defaults to {@link killTree}. */
+  kill?: (pid: number) => Promise<boolean>
+}
+
+/**
+ * Startup orphan scan: a registry entry is retired, and its process killed only
+ * when the PID still provably runs that render. A live different DSH instance
+ * (`ownerPid`) keeps its own jobs and registry untouched.
+ *
+ * Safety rule: when the command line cannot be read or does not match, the
+ * process is left alone. Killing an unrelated PID — possibly the DSH process
+ * itself after PID reuse — would be far worse than leaving an orphan.
  */
 export async function reapOrphans(
   dataDir: string,
-  options: { platform?: NodeJS.Platform; spawnImpl?: typeof spawn } = {},
+  options: ReapOptions = {},
 ): Promise<ReapResult> {
   const { entries, corrupt } = readJobRegistries(dataDir)
   const result: ReapResult = { killed: [], removed: [...corrupt], skipped: [] }
+  const alive = options.isAlive ?? isPidAlive
+  const kill = options.kill ?? ((pid: number) => killTree(pid, options))
+  const readCommandLine = options.commandLineFor ?? ((pid: number) => processCommandLine(pid, options))
   for (const entry of entries) {
-    const file = jobRegistryPath(dataDir, entry.id)
-    if (entry.pid !== process.pid && isPidAlive(entry.pid)) {
-      const killed = await killTree(entry.pid, options)
-      if (killed) result.killed.push(entry.id)
-      else result.skipped.push(entry.id)
+    if (entry.ownerPid !== undefined && entry.ownerPid !== process.pid && alive(entry.ownerPid)) {
+      // Another running DSH owns this render; its next start will reap it.
+      result.skipped.push(entry.id)
+      continue
+    }
+    if (entry.pid !== process.pid && alive(entry.pid)) {
+      let verified = false
+      try {
+        const commandLine = await readCommandLine(entry.pid)
+        verified = commandLine !== undefined && isRenderCommandLine(commandLine, entry)
+      } catch {
+        verified = false
+      }
+      if (verified) {
+        const killed = await kill(entry.pid)
+        if (killed) result.killed.push(entry.id)
+        else result.skipped.push(entry.id)
+      } else {
+        result.skipped.push(entry.id)
+      }
     }
     try {
-      fs.rmSync(file, { force: true })
+      fs.rmSync(jobRegistryPath(dataDir, entry.id), { force: true })
       result.removed.push(entry.id)
     } catch {
       result.skipped.push(entry.id)

@@ -222,7 +222,13 @@ export function installedVersion(runtimeDir: string, packageName: string): strin
 export async function installRuntime(options: InstallOptions): Promise<InstallResult> {
   const exec = options.exec ?? defaultExec
   const paths = runtimePaths(options.runtimeDir)
-  fs.mkdirSync(paths.dir, { recursive: true })
+  try {
+    fs.mkdirSync(paths.dir, { recursive: true })
+  } catch {
+    // A read-only data dir must answer the install route, not reject inside the
+    // DSH host process.
+    return { ok: false, error: 'runtime-dir-unwritable', log: '' }
+  }
   const log: string[] = []
   const append = (line: string): void => {
     log.push(line)

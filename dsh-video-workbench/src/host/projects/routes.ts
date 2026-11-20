@@ -89,6 +89,10 @@ export function createProjectCreateHandler(
           durationSec: sumDuration(created.project),
         },
       })
+    }).catch(() => {
+      // A closed connection or an unexpected error must not surface as an
+      // unhandled rejection in the DSH host process.
+      if (!response.headersSent) sendJson(response, 500, { error: 'internal' })
     })
   }
 }

@@ -10,6 +10,7 @@ import {
   expiredRenders,
   exportFileName,
   isPidAlive,
+  isRenderCommandLine,
   jobRegistryPath,
   killTree,
   nextRenderVersion,
@@ -144,6 +145,112 @@ test('reapOrphans: removes stale entries and never kills the current process', a
   } finally {
     rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
+})
+
+/** Write one registry entry, creating the registry directory first. */
+function writeRegistry(dataDir, entry) {
+  mkdirSync(path.dirname(jobRegistryPath(dataDir, entry.id)), { recursive: true })
+  writeFileSync(jobRegistryPath(dataDir, entry.id), JSON.stringify(entry), 'utf8')
+}
+
+test('reapOrphans: a live PID that is not the render is never killed', async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-jobs-'))
+  try {
+    writeRegistry(dataDir, {
+      id: 'reused',
+      pid: 4242,
+      projectId: 'p1',
+      startedAt: 'x',
+      command: 'node.exe',
+      cliPath: 'D:/rt/node_modules/hyperframes/dist/cli.js',
+    })
+    let kills = 0
+    const reaped = await reapOrphans(dataDir, {
+      isAlive: (pid) => pid === 4242,
+      commandLineFor: async () => 'C:/Windows/System32/notepad.exe C:/notes.txt',
+      kill: async () => { kills += 1; return true },
+    })
+    assert.equal(kills, 0, 'an unrelated live PID must survive a stale registry')
+    assert.deepEqual(reaped.killed, [])
+    assert.ok(reaped.removed.includes('reused'))
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }
+})
+
+test('reapOrphans: an unreadable command line is not enough to justify a kill', async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-jobs-'))
+  try {
+    writeRegistry(dataDir, { id: 'unknown', pid: 4246, projectId: 'p1', startedAt: 'x', command: 'node.exe' })
+    let kills = 0
+    await reapOrphans(dataDir, {
+      isAlive: (pid) => pid === 4246,
+      commandLineFor: async () => undefined,
+      kill: async () => { kills += 1; return true },
+    })
+    assert.equal(kills, 0)
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }
+})
+
+test('reapOrphans: a verified render process is killed and retired', async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-jobs-'))
+  try {
+    writeRegistry(dataDir, {
+      id: 'crash',
+      pid: 4243,
+      projectId: 'p1',
+      startedAt: 'x',
+      command: 'node.exe',
+      cliPath: 'D:/rt/node_modules/hyperframes/dist/cli.js',
+    })
+    const reaped = await reapOrphans(dataDir, {
+      isAlive: (pid) => pid === 4243,
+      commandLineFor: async () => 'node.exe D:\\rt\\node_modules\\hyperframes\\dist\\cli.js render D:\\projects\\p1',
+      kill: async () => true,
+    })
+    assert.deepEqual(reaped.killed, ['crash'])
+    assert.deepEqual(readJobRegistries(dataDir).entries, [])
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }
+})
+
+test('reapOrphans: a render owned by another live DSH instance is left alone', async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dshvw-jobs-'))
+  try {
+    writeRegistry(dataDir, {
+      id: 'other-instance',
+      pid: 4245,
+      ownerPid: 4244,
+      projectId: 'p1',
+      startedAt: 'x',
+      command: 'node.exe',
+      cliPath: 'D:/rt/node_modules/hyperframes/dist/cli.js',
+    })
+    let kills = 0
+    const reaped = await reapOrphans(dataDir, {
+      isAlive: (pid) => pid === 4244 || pid === 4245,
+      commandLineFor: async () => 'node.exe D:\\rt\\node_modules\\hyperframes\\dist\\cli.js render D:\\projects\\p1',
+      kill: async () => { kills += 1; return true },
+    })
+    assert.equal(kills, 0)
+    assert.ok(reaped.skipped.includes('other-instance'))
+    assert.equal(readJobRegistries(dataDir).entries.length, 1, 'the live owner keeps its registry')
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }
+})
+
+test('isRenderCommandLine: requires both hyperframes and the project id', () => {
+  const entry = {
+    id: 'r', pid: 1, projectId: 'proj-1', startedAt: 'x', command: 'node',
+    cliPath: 'D:/rt/node_modules/hyperframes/dist/cli.js',
+  }
+  assert.equal(isRenderCommandLine('node.exe D:\\rt\\node_modules\\hyperframes\\dist\\cli.js render proj-1', entry), true)
+  assert.equal(isRenderCommandLine('node.exe C:\\other\\app.js', entry), false)
+  assert.equal(isRenderCommandLine('node.exe D:\\rt\\node_modules\\hyperframes\\dist\\cli.js render other', entry), false)
 })
 
 test('isPidAlive / killTree: refuse dangerous inputs', async () => {

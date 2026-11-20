@@ -144,6 +144,27 @@ test('installRuntime: runs two pnpm passes, verifies binaries and writes supplie
   }
 })
 
+test('installRuntime: an unusable runtime dir reports instead of rejecting', async () => {
+  const parent = tempDir()
+  try {
+    // A file where the runtime directory should be makes mkdir fail; the caller
+    // must get a result, never a rejected promise inside the DSH host.
+    const blocked = path.join(parent, 'runtime-as-file')
+    writeFileSync(blocked, 'occupied', 'utf8')
+    const result = await installRuntime({
+      runtimeDir: blocked,
+      nodePath: 'C:/node/node.exe',
+      pnpmScriptPath: 'C:/pnpm/bin/pnpm.mjs',
+      env: {},
+      exec: okExec([]),
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.error, 'runtime-dir-unwritable')
+  } finally {
+    rmSync(parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }
+})
+
 test('installRuntime: a failing pnpm pass reports install-failed and releases the lock', async () => {
   const dir = tempDir()
   try {

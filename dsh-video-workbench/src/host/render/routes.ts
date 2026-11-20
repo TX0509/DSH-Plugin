@@ -99,6 +99,9 @@ export function createRenderHandler(
           return
         }
         sendJson(response, 202, { job: result.job })
+      }).catch(() => {
+        // Start must fail the request, never reject unhandled inside the host.
+        if (!response.headersSent) sendJson(response, 500, { error: 'internal' })
       })
       return
     }

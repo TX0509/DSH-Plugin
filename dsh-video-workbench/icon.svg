@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-label="视频工作台">
-  <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="#3F6AD8"/>
-  <g stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M6.6 9.4h10.8a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H6.6a1.4 1.4 0 0 1-1.4-1.4v-5.6a1.4 1.4 0 0 1 1.4-1.4Z"/>
-    <path d="M5.2 9.4 17.1 6.2l.6 2.2L5.8 11.6"/>
-    <path d="m8.3 8.6.8 2.2M11.9 7.7l.8 2.2M15.5 6.7l.8 2.2"/>
-  </g>
-</svg>

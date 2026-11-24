@@ -1,5 +1,19 @@
+# 仓库约定：git 只跟踪各插件目录（dsh-*）、根目录文档和本文件，
+# 其余抓取素材、本地实验、生成产物一律忽略。
+# 注意：本文件不支持行尾注释，注释单独成行。
+
+# 依赖与构建缓存
 node_modules/
 *.tsbuildinfo
+
+# 非插件的本地实验与临时产物
+captures/
+pages/
+local-tests/
 stock-images/
 dsh-image-gen/
-local-tests/
+
+# 系统与编辑器杂项
+.DS_Store
+*.log
+*.bak-*

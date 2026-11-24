@@ -136,7 +136,7 @@ node scripts/install.mjs --uninstall  # 卸载
 
 | 项目 | 说明 |
 | --- | --- |
-| DSH | 实测 `0.2.2-rc.5`（Desktop 内置 Web GUI）。`engines.dsh: >=0.2.1-rc.5` |
+| DSH | 实测 `0.2.2-rc.5`（Desktop 内置 Web GUI）。`engines.dsh: >=0.2.2-rc.5` |
 | Node.js | `>=20`（插件运行时不引入任何第三方依赖） |
 | 平台 | Web 与 Desktop 共用同一份客户端代码；`dsh.client.platform` 固定为 `web` |
 | 主题 | 只使用 `--dsw-*` / `--dsw-alias-*` token，跟随亮色 / 暗色 / 第三方主题 |
@@ -157,6 +157,7 @@ node scripts/smoke.mjs       # 真实网络冒烟：免 Key 图库搜索 + 下�
 - **设置页卡片尚未做视觉验收**：DSH Web GUI 只接受带认证信息的 URL，外部自动化浏览器无法打开，因此没有提供截图。卡片已通过单测（slot 注册、凭据 Remote 转发、中英文案一致）；请在 **Plugins → 配图素材库** 里确认实际观感。
 - **三个需要 Key 的图库未做真机调用**：本机没有 Pexels / Pixabay / Unsplash 的 Key，只按官方文档做了请求构造与字段归一化的单测。填上 Key 后可用 `stock_image_sources({ check: true })` 自检。
 - **搜索不是万能的**：Pexels / Pixabay / Unsplash 是通用素材库，搜人名通常只能得到「相似氛围」的图；要找特定人物（例如黄仁勋），请依赖 Openverse 与 Wikimedia Commons，或用 `alt_query` 同时给出英文名。
+- **代理网络需要显式配置**：插件走 Node `fetch` 直连图库，不读 Windows 系统代理。仅代理出口的网络（公司网/区域网络）需以 `NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY` 启动 DSH（Node ≥ 24），详见 INSTALL.md「代理网络」。
 - **Pixabay 大图上限 1280px**：默认 Key 只返回 `largeImageURL`；更高分辨率需要向 Pixabay 申请 full API access。
 - **Unsplash Demo Key 只有 50 次/小时**：频繁搜索容易打满，Production 需要走审核。
 - **Openverse 匿名额度 20 次/分钟 / 200 次/天**：大量搜索建议申请 OAuth 应用提额。

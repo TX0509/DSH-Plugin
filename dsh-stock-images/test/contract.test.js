@@ -4,7 +4,9 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { apply as hostApply, PACKAGE_NAME, KEY_REFS } from '../index.js'
+import { apply as hostApply, PACKAGE_NAME, KEY_REFS, __internals as hostInternals } from '../index.js'
+
+const { cacheSearchItems, cachedSearchItem } = hostInternals
 
 /** Minimal Cordis context capturing registrations and effects. */
 function createHostContext() {
@@ -160,9 +162,15 @@ test('host apply registers the three tools with a registry-ready shape', () => {
     assert.ok(blocks[0].text.length > 0)
   }
 
-  assert.equal(effects.length, 3)
-  assert.equal(disposed.length, 3)
+  assert.equal(effects.length, 4)
+  assert.equal(disposed.length, 4)
+  // One of the disposers must drop the process-local search cache, so a
+  // disable/unload leaves no validated-download metadata behind.
+  cacheSearchItems([
+    { downloadUrl: 'https://example.com/a.jpg', source: 'wikimedia', title: 'a', rights: { allowed: true } }
+  ])
   for (const disposer of disposed) disposer()
+  assert.equal(cachedSearchItem('https://example.com/a.jpg'), undefined)
   for (const disposer of disposed) disposer()
 })
 

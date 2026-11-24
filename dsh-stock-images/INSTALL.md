@@ -6,7 +6,7 @@
 
 | 项目 | 要求 |
 | --- | --- |
-| DSH | `>=0.2.1-rc.5`（实测 `0.2.2-rc.5`） |
+| DSH | `>=0.2.2-rc.5`（实测 `0.2.2-rc.5`） |
 | Node.js | `>=20`（只有安装脚本与测试需要；插件本体由 DSH 自带的运行时加载） |
 | 操作系统 | macOS / Windows / Linux（Web 与 Desktop 共用同一份客户端代码） |
 | 网络 | 搜索与下载需要访问图库 API；无网时工具会返回明确的网络错误 |
@@ -130,6 +130,15 @@ chmod 600 ~/.dsh/.credentials.yaml
 **搜索返回 429**
 
 - 超出图库额度。Pexels 200 次/小时、Pixabay 100 次/分钟、Openverse 匿名 20 次/分钟且 200 次/天、Unsplash Demo 50 次/小时。等一会儿再试，或申请更高额度。
+
+**搜索/下载全部报 `TIMEOUT` 或 `NETWORK_ERROR`（代理网络）**
+
+- 本插件走 Node 的 `fetch` 直连图库，**不读 Windows 系统代理**。如果你的机器只有代理出口（常见于公司网/区域网络），所有图库都会连不上。
+- 解决：让 DSH 进程带代理环境变量启动（Node ≥ 24）：
+  ```sh
+  NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7897 dsh   # 换成你的代理地址
+  ```
+  环境变量是**启动时快照**，启动后设置不生效。验证是否通了：让 Agent 调用 `stock_image_sources({ check: true })`。
 
 **下载报 `PATH_OUTSIDE_WORKSPACE`**
 

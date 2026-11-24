@@ -121,6 +121,26 @@ function clampInt(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.trunc(number)))
 }
 
+/** Windows reserved device names (with or without an extension). */
+const WINDOWS_RESERVED_STEMS = new Set([
+  'CON', 'PRN', 'AUX', 'NUL',
+  'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+  'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+  'CLOCK$'
+])
+
+/** Avoid Windows reserved device names; return the fallback when hit. */
+function avoidReservedStem(stem, fallback) {
+  const upper = stem.toUpperCase()
+  // Windows treats "CON.jpg" as the console device: the stem before the first
+  // dot is what matters, so "con.txt" and "con" are both reserved.
+  const base = upper.split('.')[0]
+  if (WINDOWS_RESERVED_STEMS.has(base) || WINDOWS_RESERVED_STEMS.has(upper)) {
+    return `${fallback}-${stem}`.slice(0, 60)
+  }
+  return stem
+}
+
 /** Sanitize a free-form name into a safe ASCII-ish file stem. */
 function sanitizeFilename(value, fallback = 'image') {
   const raw = cleanText(value).normalize('NFKD')
@@ -132,8 +152,9 @@ function sanitizeFilename(value, fallback = 'image') {
     .replace(/[-._]+$/, '')
   // Slice by code point so a surrogate pair (emoji) is never cut in half.
   const codepoints = Array.from(ascii)
-  const stem = codepoints.length > 60 ? codepoints.slice(0, 60).join('') : ascii
-  return stem === '' || stem === '.' || stem === '..' ? fallback : stem
+  const sliced = codepoints.length > 60 ? codepoints.slice(0, 60).join('') : ascii
+  const stem = sliced === '' || sliced === '.' || sliced === '..' ? fallback : sliced
+  return avoidReservedStem(stem, fallback)
 }
 
 /**
@@ -195,11 +216,30 @@ async function assertNotSymlink(target) {
 }
 
 /**
- * Session working directory from the calling Agent's Session header.
- * A tool call without a Session has no workspace, so it refuses instead of
- * falling back to the process directory (which may be the app installation).
+ * Resolve the directory writes are anchored to for the calling Agent.
+ *
+ * Preferred: the working-directory service (`ctx.workingDirectory.ensure`), the
+ * same anchor DSH's own file tools use, so a Session that moved through
+ * `working_directory` or `create_worktree` writes — and reports paths — inside
+ * the tree the Agent's other tools operate on. Without the service (a bare
+ * composition), fall back to the Session header's original `cwd` and refuse
+ * when even that is missing rather than writing to the process directory.
  */
-function workspaceRootFromExec(exec) {
+async function workspaceRootFromExec(ctx, exec) {
+  let workingDirectory
+  try {
+    workingDirectory = typeof ctx?.get === 'function' ? ctx.get('workingDirectory') : undefined
+  } catch {
+    workingDirectory = undefined
+  }
+  if (workingDirectory !== undefined && workingDirectory !== null && typeof workingDirectory.ensure === 'function') {
+    try {
+      const ensured = await workingDirectory.ensure(exec?.agent, exec?.signal)
+      if (typeof ensured === 'string' && ensured !== '' && isAbsolute(ensured)) return ensured
+    } catch {
+      /* fall back to the Session header below */
+    }
+  }
   const cwd = exec?.agent?.session?.header?.cwd
   if (typeof cwd === 'string' && cwd !== '' && isAbsolute(cwd)) return cwd
   throw new StockImageError('this tool needs an active Session workspace; open a conversation and retry', 'NO_WORKSPACE')
@@ -1284,6 +1324,11 @@ function cachedSearchItem(url) {
   return hit.item
 }
 
+/** Drop the in-process search cache (plugin disable/unload and tests). */
+function clearSearchCache() {
+  searchCache.clear()
+}
+
 /* ------------------------------------------------------------------------- *
  * Operations
  * ------------------------------------------------------------------------- */
@@ -1556,19 +1601,44 @@ async function uniqueTargetPath(dir, stem, extension) {
   throw new StockImageError(`cannot find a free file name for "${stem}" in ${dir}`, 'FILENAME_EXHAUSTED')
 }
 
+/**
+ * Serialize attribution writes per folder.
+ *
+ * `recordAttribution` is read-modify-write: two concurrent downloads into the
+ * same folder would both read the old file and the second write would drop the
+ * first credit line. Attribution is a license condition, so losing one is not
+ * acceptable; a process-local per-path promise chain keeps them ordered.
+ */
+const attributionWrites = new Map()
+
+function enqueueAttributionWrite(path, task) {
+  const previous = attributionWrites.get(path) ?? Promise.resolve()
+  const next = previous.then(task, task)
+  attributionWrites.set(path, next)
+  const release = () => {
+    // Drop the chain entry only when `next` is still the tail, so a queue
+    // building behind it stays intact.
+    if (attributionWrites.get(path) === next) attributionWrites.delete(path)
+  }
+  next.then(release, release)
+  return next
+}
+
 /** Append one credit line to the folder's ATTRIBUTION.md. */
 async function recordAttribution(dir, entry) {
   const absolutePath = join(dir, ATTRIBUTION_FILE)
   const line = `- ${entry.date} · ${entry.file} · ${entry.credit}${entry.source === '' ? '' : ` [${entry.source}]`}\n`
-  let existing
-  try {
-    existing = await fs.readFile(absolutePath, 'utf8')
-  } catch {
-    existing = '# Image attribution\n\nCredits for the images in this folder. Keep them with the images when publishing.\n\n'
-  }
-  if (existing.includes(line)) return absolutePath
-  await fs.writeFile(absolutePath, `${existing}${line}`, 'utf8')
-  return absolutePath
+  return enqueueAttributionWrite(absolutePath, async function writeCreditLine() {
+    let existing
+    try {
+      existing = await fs.readFile(absolutePath, 'utf8')
+    } catch {
+      existing = '# Image attribution\n\nCredits for the images in this folder. Keep them with the images when publishing.\n\n'
+    }
+    if (existing.includes(line)) return absolutePath
+    await fs.writeFile(absolutePath, `${existing}${line}`, 'utf8')
+    return absolutePath
+  })
 }
 
 /**
@@ -1628,7 +1698,7 @@ export function resolveDownloadPolicy({ url, source, cached }) {
 }
 
 /** Download one image into the Session workspace and record its credit. */
-async function performDownload({ args, exec, logger }) {
+async function performDownload({ ctx, args, exec, logger }) {
   if (exec?.signal?.aborted === true) throw new StockImageError('download aborted', 'ABORTED')
   const cached = cachedSearchItem(args.url)
   const policy = resolveDownloadPolicy({ url: args.url, source: args.source, cached })
@@ -1686,7 +1756,7 @@ async function performDownload({ args, exec, logger }) {
     )
   }
 
-  const workspaceRoot = workspaceRootFromExec(exec)
+  const workspaceRoot = await workspaceRootFromExec(ctx, exec)
   const directory = resolveInsideRoot(workspaceRoot, args.directory)
   await fs.mkdir(directory, { recursive: true })
   // Lexical containment is not enough: a symlinked directory must not redirect
@@ -2038,7 +2108,7 @@ function createToolDefinitions({ ctx, logger }) {
     },
     async execute(rawArgs, exec) {
       const args = validateDownloadArgs(rawArgs)
-      return performDownload({ args, exec, logger })
+      return performDownload({ ctx, args, exec, logger })
     }
   }
 
@@ -2099,6 +2169,9 @@ export function apply(ctx) {
       }
     }, `dsh-stock-images: ${definition.name}`)
   }
+  // The search cache is process-local metadata; dropping it on disable/unload
+  // keeps no state behind (and makes restart-required semantics explicit).
+  ctx.effect(() => clearSearchCache, 'dsh-stock-images: search cache')
 }
 
 /** Test surface: pure helpers and provider normalizers. */
@@ -2140,6 +2213,10 @@ export const __internals = {
   validateSearchArgs,
   validateDownloadArgs,
   describeProviderFailure,
+  clearSearchCache,
+  cacheSearchItems,
+  cachedSearchItem,
+  recordAttribution,
   renderSearchText,
   renderDownloadText,
   renderSourcesText

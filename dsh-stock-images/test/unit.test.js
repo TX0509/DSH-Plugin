@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { tmpdir } from 'node:os'
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import {
@@ -35,7 +35,8 @@ const {
   latinQuery,
   providerQueries,
   withUnsplashUtm,
-  stripHtml
+  stripHtml,
+  recordAttribution
 } = internals
 
 /** Build a PNG header with the given dimensions. */
@@ -56,6 +57,21 @@ test('sanitizeFilename keeps CJK and drops path separators', () => {
   assert.equal(sanitizeFilename('.', 'fallback'), 'fallback')
   assert.equal(sanitizeFilename('..', 'fallback'), 'fallback')
   assert.equal(sanitizeFilename('Photo by Jane Doe', 'fallback'), 'Photo-by-Jane-Doe')
+})
+
+test('sanitizeFilename avoids Windows reserved device names', () => {
+  // "CON.jpg" is the console device on Windows, not a file; the stem before
+  // the first dot is what Windows checks, in any case.
+  for (const reserved of ['CON', 'con', 'NUL', 'nul.txt', 'COM1', 'lpt9.log', 'CLOCK$']) {
+    const stem = sanitizeFilename(reserved, 'image')
+    assert.notEqual(stem.toUpperCase().split('.')[0], reserved.toUpperCase().split('.')[0], reserved)
+    assert.ok(stem.length > 0, reserved)
+    assert.ok(!/[^-\w.\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(stem), reserved)
+  }
+  // Regular names, including ones starting with the same letters, survive.
+  assert.equal(sanitizeFilename('contact-sheet', 'fallback'), 'contact-sheet')
+  assert.equal(sanitizeFilename('nullity', 'fallback'), 'nullity')
+  assert.equal(sanitizeFilename('console.jpg', 'fallback'), 'console.jpg')
 })
 
 test('clampInt clamps, truncates and falls back', () => {
@@ -526,7 +542,7 @@ test('latinQuery only swaps in the alternative for a CJK primary query', () => {
   assert.equal(latinQuery('黄仁勋', ''), '黄仁勋')
 })
 
-test('path guards refuse symlinked directories and links used as files', async () => {
+test('path guards refuse symlinked directories and links used as files', async (t) => {
   const base = await mkdtemp(join(tmpdir(), 'dsh-stock-images-symlink-'))
   try {
     const workspace = join(base, 'workspace')
@@ -534,7 +550,17 @@ test('path guards refuse symlinked directories and links used as files', async (
     await mkdir(workspace)
     await mkdir(outside)
     const linked = join(workspace, 'stock-images')
-    await symlink(outside, linked)
+    try {
+      await symlink(outside, linked)
+    } catch (error) {
+      // Windows without admin / developer mode refuses directory symlinks
+      // outright; the guards themselves are platform-independent.
+      if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+        t.skip(`symlinks unavailable on this account (${error.code}); the guard logic is platform-independent`)
+        return
+      }
+      throw error
+    }
 
     await assert.rejects(assertRealDirectoryInsideRoot(workspace, linked), /symlink/)
     const real = join(workspace, 'ok')
@@ -543,23 +569,54 @@ test('path guards refuse symlinked directories and links used as files', async (
     // macOS resolves /var through /private/var, so compare the real path.
     assert.equal(resolved, await realpath(real))
 
-    const target = join(workspace, 'ATTRIBUTION.md')
-    await writeFile(join(outside, 'attribution-target.md'), 'x')
-    await symlink(join(outside, 'attribution-target.md'), target)
-    await assert.rejects(assertNotSymlink(target), /symbolic link/)
+    try {
+      const target = join(workspace, 'ATTRIBUTION.md')
+      await writeFile(join(outside, 'attribution-target.md'), 'x')
+      await symlink(join(outside, 'attribution-target.md'), target)
+      await assert.rejects(assertNotSymlink(target), /symbolic link/)
+    } catch (error) {
+      if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+        t.skip('file symlinks unavailable on this account; the guard logic is platform-independent')
+        return
+      }
+      throw error
+    }
     await assert.doesNotReject(assertNotSymlink(join(workspace, 'missing.md')))
   } finally {
     await rm(base, { recursive: true, force: true })
   }
 })
 
-test('workspaceRootFromExec refuses a call without a Session workspace', () => {
-  assert.throws(() => workspaceRootFromExec(undefined), /active Session workspace/)
-  assert.throws(() => workspaceRootFromExec({ agent: { session: { header: {} } } }), /active Session workspace/)
+test('workspaceRootFromExec prefers the working-directory service and falls back to the header', async () => {
+  const headerRoot = 'D:\\repo'
+  const worktreeRoot = 'D:\\repo\\.worktrees\\fix-x'
+  const exec = { agent: { session: { header: { cwd: headerRoot } } } }
+
+  // No service at all: falls back to the header cwd.
+  assert.equal(await workspaceRootFromExec(undefined, exec), headerRoot)
+  assert.equal(await workspaceRootFromExec({ get: () => undefined }, exec), headerRoot)
+  // Service that throws: still falls back instead of failing the download.
   assert.equal(
-    workspaceRootFromExec({ agent: { session: { header: { cwd: '/tmp/example' } } } }),
-    '/tmp/example'
+    await workspaceRootFromExec({ get: () => ({ ensure: () => Promise.reject(new Error('nope')) }) }, exec),
+    headerRoot
   )
+
+  // Service with a live answer: wins over the header, so a Session that moved
+  // through create_worktree / working_directory writes into the current tree.
+  // Like the real service, it only answers for an agent-backed call.
+  const withService = {
+    get: (name) =>
+      name === 'workingDirectory'
+        ? { ensure: (agent) => (agent ? Promise.resolve(worktreeRoot) : undefined) }
+        : undefined
+  }
+  assert.equal(await workspaceRootFromExec(withService, exec), worktreeRoot)
+
+  // No session at all: refuses rather than writing to the process directory.
+  await assert.rejects(workspaceRootFromExec(withService, {}), /active Session workspace/)
+  await assert.rejects(workspaceRootFromExec(undefined, undefined), /active Session workspace/)
+  const relativeHeader = { agent: { session: { header: { cwd: 'relative/path' } } } }
+  await assert.rejects(workspaceRootFromExec(undefined, relativeHeader), /active Session workspace/)
 })
 
 test('only formats read_image can review are saveable', () => {
@@ -570,4 +627,34 @@ test('only formats read_image can review are saveable', () => {
   assert.equal(SAVEABLE_EXTENSIONS.has(sniffImageType(pngHeader(10, 10)).extension), true)
   assert.equal(sniffImageType(Buffer.alloc(16, 0xff)), null)
   assert.equal(SAVEABLE_EXTENSIONS.has(sniffImageType(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])).extension), true)
+})
+
+test('concurrent downloads into one folder keep every attribution line', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'dsh-stock-images-attr-'))
+  try {
+    // Fire many writes at once: without per-path serialization the
+    // read-modify-write race drops credit lines (the loser's write is
+    // overwritten by a stale read).
+    const lines = Array.from({ length: 24 }, (_, index) => ({
+      date: '2026-11-24',
+      file: `stock-images/photo-${index}.jpg`,
+      credit: `Photo by photographer-${index}`,
+      source: 'wikimedia'
+    }))
+    await Promise.all(lines.map((entry) => recordAttribution(base, entry)))
+    const written = await readFile(join(base, 'ATTRIBUTION.md'), 'utf8')
+    for (const entry of lines) {
+      assert.ok(written.includes(entry.file), entry.file)
+      assert.ok(written.includes(entry.credit), entry.credit)
+    }
+    // The header the plugin writes on a fresh folder is present exactly once.
+    assert.equal(written.split('# Image attribution').length - 1, 1)
+
+    // Re-recording the same line is still a no-op, not a duplicate.
+    await recordAttribution(base, lines[0])
+    const after = await readFile(join(base, 'ATTRIBUTION.md'), 'utf8')
+    assert.equal((after.match(/photo-0\.jpg/g) ?? []).length, 1)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
 })

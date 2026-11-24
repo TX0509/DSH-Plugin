@@ -95,6 +95,25 @@ Openverse 与 Wikimedia Commons 搜索「Jensen Huang」并下载图片到临时
 
 测试从 41 个增加到 57 个，新增：许可对抗语料、IPv6 表、符号链接写入、只允许可回读格式、Host/Client `apply()` 契约、搜索编排（stub fetch，离线确定性）、下载集成（署名强制、来源不匹配、未搜索 URL 拒绝）、安装脚本。
 
+## 代码审查后修复（第三轮，2026-11-24，Windows 实测）
+
+| 问题 | 状态 |
+| --- | --- |
+| 写入锚定 `Session.header.cwd`（创建时目录），worktree / `working_directory` 切换后图片落到旧树、相对路径让 `read_image` 找不到文件 | 已修：`workspaceRootFromExec` 改为优先 `ctx.workingDirectory.ensure(exec.agent, exec.signal)`（与 DSH 官方文件工具同一锚点），服务缺失或抛错时回落 `header.cwd`；无任何锚点仍拒绝 `NO_WORKSPACE` |
+| Windows 无管理员/开发者模式时 symlink 测试以 `EPERM` 报红 | 已修：捕获 `EPERM`/`EACCES` 后 `t.skip`，环境限制显式化 |
+| `ATTRIBUTION.md` 读-改-写竞态：并发下载丢 credit 行（署名是许可条件） | 已修：按文件路径的进程内 promise 链串行化；新增 24 路并发测试断言每行都在、文件头只出现一次、重复记录仍是幂等 |
+| Windows 保留设备名（`CON`/`NUL`/`COM1`…）未处理，写入以 `WRITE_FAILED` 报错 | 已修：`sanitizeFilename` 按首个 `.` 前的词干判保留名，命中时回退为 `fallback-原名`；含对抗测试（`contact-sheet` 等近似词不受影响） |
+| 搜索缓存不随插件停用/卸载清理 | 已修：`apply` 内以 `ctx.effect` 注册 `clearSearchCache`；契约测试断言 disposer 真的清空缓存 |
+| README/INSTALL 的 `engines.dsh`（`>=0.2.1-rc.5`）与 package.json（`>=0.2.2-rc.5`）不一致 | 已修：文档对齐 |
+
+第三轮测试：`node --test` 70 个用例，69 通过 + 1 skip（symlink 用例在 Windows 无开发者模式账号上显式跳过）；`node --check` 通过。
+
+### 第三轮 Windows 真机验证（本机）
+
+- `node --test` / `node --check`：如上。
+- `node scripts/smoke.mjs`：**直连失败**（本机出网仅走系统代理 `127.0.0.1:7897`，且外网 DNS 被污染；Node 的 `fetch` 不读 Windows 系统代理）。设 `NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY=http://127.0.0.1:7897`（Node ≥ 24）后重跑：Openverse 4 条、Wikimedia 4 条真实结果，下载 2 张（HTTP 200、JPEG 签名与尺寸校验通过），**All live checks passed**。
+- 结论：插件 HTTP 路径无回归；代理网络下的启动要求见 INSTALL.md「代理网络」。
+
 ## 未验证 / 需要用户确认
 
 - **设置页卡片的视觉效果未验证**：DSH Web GUI 只接受 `dsh web` 打印的带认证信息的 URL，外部自动化浏览器拿到的是 `dsh web authentication required; reopen the URL printed by dsh web.`。因此没有截图，也没有做亮/暗主题、窄窗口、侧栏收起的视觉验收。代码层面已静态检查 + 单测覆盖注册与凭据转发。

@@ -1,2 +1,5 @@
 node_modules/
 *.tsbuildinfo
+stock-images/
+dsh-image-gen/
+local-tests/

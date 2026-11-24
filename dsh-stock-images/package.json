@@ -1,0 +1,61 @@
+{
+  "name": "dsh-stock-images",
+  "version": "0.1.0",
+  "description": "Search free stock-photo libraries (Pexels, Pixabay, Unsplash, Openverse, Wikimedia Commons) and save licensed images into the workspace, with API keys managed on the plugin's settings page.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "INSTALL.md",
+    "LICENSE",
+    "docs",
+    "scripts",
+    "test"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "stock-photos",
+    "images",
+    "pexels",
+    "pixabay",
+    "unsplash",
+    "openverse",
+    "wikimedia-commons"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.2-rc.5"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check index.js && node --check client.js",
+    "install-plugin": "node scripts/install.mjs",
+    "uninstall-plugin": "node scripts/install.mjs --uninstall",
+    "check-install": "node scripts/install.mjs --check"
+  },
+  "license": "MIT",
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}

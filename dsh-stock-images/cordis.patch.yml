@@ -1,0 +1,8 @@
+# dsh-stock-images bundle patch.
+#
+# One Host row registers the stock-image tools (ctx.tools) and reads API keys
+# from the DSH credential store. The same row also serves the bundle's browser
+# half, which renders the settings card on the plugin's page in Plugins.
+- insert:
+    - id: stock-images
+      name: 'dsh-stock-images'

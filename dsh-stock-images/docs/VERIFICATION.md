@@ -105,6 +105,7 @@ Openverse 与 Wikimedia Commons 搜索「Jensen Huang」并下载图片到临时
 | Windows 保留设备名（`CON`/`NUL`/`COM1`…）未处理，写入以 `WRITE_FAILED` 报错 | 已修：`sanitizeFilename` 按首个 `.` 前的词干判保留名，命中时回退为 `fallback-原名`；含对抗测试（`contact-sheet` 等近似词不受影响） |
 | 搜索缓存不随插件停用/卸载清理 | 已修：`apply` 内以 `ctx.effect` 注册 `clearSearchCache`；契约测试断言 disposer 真的清空缓存 |
 | README/INSTALL 的 `engines.dsh`（`>=0.2.1-rc.5`）与 package.json（`>=0.2.2-rc.5`）不一致 | 已修：文档对齐 |
+| 第三轮新增的 `workspaceRootFromExec` 测试用了 Windows 专用绝对路径字面量（`D:\repo`），POSIX 上 `isAbsolute` 为 false 会失败 | 已修：改为 `resolve('/', ...)` 派生平台无关绝对路径（Windows 上解析为 `<盘符>:\...`，POSIX 上为 `/...`），本机 70 用例 69 过 + 1 skip |
 
 第三轮测试：`node --test` 70 个用例，69 通过 + 1 skip（symlink 用例在 Windows 无开发者模式账号上显式跳过）；`node --check` 通过。
 

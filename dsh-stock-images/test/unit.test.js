@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { tmpdir } from 'node:os'
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import {
   __internals as internals,
@@ -588,8 +588,11 @@ test('path guards refuse symlinked directories and links used as files', async (
 })
 
 test('workspaceRootFromExec prefers the working-directory service and falls back to the header', async () => {
-  const headerRoot = 'D:\\repo'
-  const worktreeRoot = 'D:\\repo\\.worktrees\\fix-x'
+  // Platform-independent absolute paths: resolve('/') yields "<drive>:\..." on
+  // Windows and "/..." on POSIX, so isAbsolute holds on both. Literals like
+  // "D:\repo" would fail the isAbsolute check on POSIX.
+  const headerRoot = resolve('/', 'dsh-stock-images-test', 'repo')
+  const worktreeRoot = resolve('/', 'dsh-stock-images-test', 'repo', 'worktrees', 'fix-x')
   const exec = { agent: { session: { header: { cwd: headerRoot } } } }
 
   // No service at all: falls back to the header cwd.

@@ -10,6 +10,7 @@
 | **dsh-selection-actions** | [`dsh-selection-actions`](dsh-selection-actions/README.md) | 在会话正文中**自由选中一段文字**后，选区旁出现「复制 \| 添加到对话框」操作组；复制把文字写入剪贴板，添加则把文字插入当前对话框的光标/选区位置，保留缩进与换行，不会自动发送。 |
 | **dsh-dev-commands** | [`dsh-dev-commands`](dsh-dev-commands/README.md) | 在会话输入框中通过 `/` 调起 **`/review`**（审查未提交改动）与 **`/ship`**（提交并推送全部本地未提交改动）两个开发流程命令；命令把任务交给当前 Agent，沿用 DSH 的工具权限、审批和 sandbox；Agent 正在执行任务时命令自动排队，不打断当前任务。 |
 | **dsh-stock-images** | [`dsh-stock-images`](dsh-stock-images/README.md) | 给 Agent 三个配图工具：跨 Pexels / Pixabay / Unsplash / Openverse / Wikimedia Commons 搜图、把选中的图直接下载进会话工作区并记录署名与许可；API Key 在插件设置页填写并存入 DSH 凭据库。Openverse 与 Wikimedia Commons 免 Key 即可用，找真人肖像首选。 |
+| **dsh-multichannel-story** | [`dsh-multichannel-story`](dsh-multichannel-story/README.md) | 给 Agent 装上 `multichannel-story` 技能：一篇文章 → 精排网页长文 + 小红书图文 + 公众号封面，可选再加一条带自然男声旁白的抖音竖屏视频。Host 半区只向 `ctx.skills` 注册技能，客户端半区加一个可选的侧栏入口与工作台面板；不加工具、不改提示词、不监听事件；输入 `/multichannel-story` 即可调用，技能开跑前强制做环境自检。 |
 
 ## 快速了解
 
@@ -25,6 +26,9 @@
 - **dsh-dev-commands**  
   Host 负责通过 `ctx.commands.register()` 注册斜杠命令，Client 给 `/review` / `/ship` 菜单行补齐中文标题、英文别名和图标；命令本身不执行 git，而是把一段普通用户消息交给 Agent，由 Agent 使用已有的 bash / git 工具完成审查或提交推送。消息通过 `agent.followup()` 进入下一轮队列：Agent 忙时排队等待，当前任务结束后再执行，不会用 `steer` 打断正在进行的任务。
 
+- **dsh-multichannel-story**  
+  Host 半区用 `ctx.skills.registerProvider()` 把随包提供的 `multichannel-story` 技能注册成 bundled skill（rank 600，低于用户级 500，不顶掉手装副本）；客户端半区在左侧边栏加一个可选的「多平台内容」入口（`sidebar.panellist` + 自己的 `main` 面板 + 插件详情页配置卡片），面板里选档位后把 `/multichannel-story …` 提示词写进草稿（已有草稿则追加，不自动发送），也可以随时把侧栏入口关掉（技能不受影响）。不覆盖宿主组件、不加工具、不改提示词、不监听会话事件。技能脚本层以跨平台 Node CLI（`mcs.mjs`）为主，另有 Python 脚本（`tts.py` / `scaffold-video.py`）与 POSIX `.sh` 薄壳；Windows 上不需要 `bash`。
+
 ## 安装
 
 每个插件目录下都有独立的安装说明：
@@ -33,8 +37,9 @@
 - [dsh-selection-actions 安装说明](dsh-selection-actions/INSTALL.md)
 - [dsh-dev-commands 安装说明](dsh-dev-commands/INSTALL.md)
 - [dsh-stock-images 安装说明](dsh-stock-images/INSTALL.md)
+- [dsh-multichannel-story 安装说明](dsh-multichannel-story/INSTALL.md)
 
-四个插件都提供 `scripts/install.mjs`，默认处理 `web` 与 `desktop` 两个 profile：
+五个插件都提供 `scripts/install.mjs`，默认处理 `web` 与 `desktop` 两个 profile：
 
 ```sh
 cd <插件目录>
@@ -52,7 +57,8 @@ node scripts/install.mjs --uninstall  # 卸载
 
 ## 兼容性
 
-- 目标运行时：DSH `0.2.1-rc.5`（Desktop 内置 Web GUI）；`dsh-stock-images` 实测并要求 `0.2.2-rc.5`。
+- 本机实测：Desktop profile 运行 DSH `0.2.2-rc.5`，Web profile 运行 DSH `0.2.2-rc.1`（Web 与 Desktop 是两个独立 profile）。
+- 各插件的 `engines.dsh` 只写实际验证过的范围：`dsh-stock-images` 要求 `0.2.2-rc.5` 起；`dsh-multichannel-story` 是 `>=0.2.2-rc.1 <0.3.0`（下限按 rc.1 的 `@deepseek-ai/dsh-skill` 源码核对，并在 web profile 的组合里验证）。
 - Node.js：`>=20`（安装脚本与测试需要；插件运行时不引入第三方依赖）。
 - 主题：跟随 DSH 的 `--dsw-*` / `--dsw-alias-*` token，支持亮色、暗色和第三方主题。
 - 平台：Web 与 Desktop 共用同一份客户端代码；Desktop 的顶部安全区、窄窗口和侧栏收起状态均已纳入布局处理。

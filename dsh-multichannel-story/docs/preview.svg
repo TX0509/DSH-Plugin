@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="One article flowing into a long-form page, a social card set and a vertical video">
+  <rect x="52" y="74" width="112" height="152" rx="12" fill="none" stroke="#7c8590" stroke-width="2"/>
+  <path d="M72 108h72M72 126h72M72 144h58M72 162h40" stroke="#9aa0a8" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="120" cy="196" r="7" fill="#c7ccd4"/>
+
+  <path d="M168 150h54" stroke="#7c8590" stroke-width="2" stroke-linecap="round"/>
+  <path d="M222 150c14 0 18-30 32-30M222 150h32M222 150c14 0 18 30 32 30" stroke="#7c8590" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <rect x="260" y="66" width="104" height="168" rx="10" fill="none" stroke="#7c8590" stroke-width="2"/>
+  <path d="M278 96h68M278 114h68M278 132h50M278 150h62M278 168h40" stroke="#9aa0a8" stroke-width="2" stroke-linecap="round"/>
+  <rect x="278" y="192" width="68" height="22" rx="5" fill="#e3e7ee"/>
+
+  <rect x="398" y="92" width="76" height="102" rx="8" fill="none" stroke="#7c8590" stroke-width="2"/>
+  <rect x="412" y="108" width="48" height="10" rx="3" fill="#818cf8"/>
+  <path d="M412 128h48M412 140h36M412 152h48" stroke="#9aa0a8" stroke-width="2" stroke-linecap="round"/>
+  <rect x="412" y="166" width="48" height="14" rx="3" fill="#e3e7ee"/>
+
+  <rect x="500" y="84" width="64" height="114" rx="10" fill="none" stroke="#7c8590" stroke-width="2"/>
+  <circle cx="532" cy="141" r="17" fill="#4f46e5"/>
+  <path d="M527 132.5l14 8.5-14 8.5z" fill="#ffffff"/>
+  <rect x="512" y="172" width="40" height="5" rx="2.5" fill="#c7ccd4"/>
+</svg>

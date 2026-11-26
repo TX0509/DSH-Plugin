@@ -1,0 +1,25 @@
+{
+  "generatedBy": "scripts/sync-assets.mjs",
+  "sourceSkill": "multichannel-story",
+  "files": {
+    "SKILL.md": "1ecc99a95fef032dd7a98282d9914e27b2ba7d82830c109f900fe149d2e802ae",
+    "references/cards.md": "60a765286ef619b8e8b23a1adba87688df0a7e306c563bb898b7136a2e565f7a",
+    "references/checklist.md": "b75fdedb291e96efc1352a68598923ef25eb3e1d831dacc89c42798c6d0208f7",
+    "references/copy-and-images.md": "fc7011396f14dc3aa813e70f8ef955334338d96e34053bfeb00f246024bf995b",
+    "references/guizang-workflows.md": "a503e236ae6c9cc95bf5e6f7fc3854e734b2cd22397742b747108f81bc0a91d8",
+    "references/page.md": "44134e0623c61209fbc113b84393cd35e274c7186acfc9f180e1039e2d299ca1",
+    "references/setup.md": "eef5bb5b9dc4d6f0d8ecd736afe5311d2320c90fe142cada23df14ca4023dcb7",
+    "references/video.md": "c619a775ad5e06f063110e20620247735e1dd929dedc38b79bd8946d31d04625",
+    "references/voice.md": "17a29d355c767ec7c2b761c40948cbb93cbb65cfcc2847ef84870187eda8ffc2",
+    "scripts/brand-theme.sh": "e6523637a69a7c60d5f88848846f071a21fd12f4e39919342d6f9a17d207647e",
+    "scripts/build-cards.sh": "6203f25a9f4fe69191da3ae1f8876ff90a05aed9c8032bd8aac8eb60796c1c84",
+    "scripts/build-page.sh": "b6c2034b9b0cde718f6289e031f9559c009529931b29945a686c49f5bd21032a",
+    "scripts/list-recipes.mjs": "7037c0e49bfd80042038a15d2735e96ad2659e03cd6ac1695f6525fc6917144d",
+    "scripts/mcs.mjs": "81e6ff826d24bc21b70a791e9e607383cfcd1ec8805c3219782dabbc58bc9a17",
+    "scripts/page-post.mjs": "9e87f522a6236178cbea98cdfaa2c12a76a900eed8c3ba0c47a50b5f89e2d862",
+    "scripts/preflight.sh": "5111c7f8fe41a641a9e92d28bfd5625a5e170289bf475934192eb723bfadb939",
+    "scripts/scaffold-video.py": "ba8790f49fdc1e05a07dbb0339ed6fb3b6a88821100b527e28bac3102d17b857",
+    "scripts/tts.py": "e18cb2b28969b75836cd8a61c0975ea71784e0ee8a6a66ecc82bd226257efe33",
+    "scripts/verify-av.sh": "b2d6a9486f1124f563a815eccbeb6fe16ef3333c4ecdae8edef05c9f5394d7db"
+  }
+}

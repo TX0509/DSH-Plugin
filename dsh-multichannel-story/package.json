@@ -1,0 +1,62 @@
+{
+  "name": "dsh-multichannel-story",
+  "version": "1.3.2",
+  "description": "把一篇文章一次做成网页长文、小红书图文、公众号封面，可选再出一条带男声旁白的抖音竖屏视频（为 DSH Desktop / Web 提供 multichannel-story skill 与可选的侧栏入口）。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "docs",
+    "assets",
+    "scripts",
+    "test",
+    "README.md",
+    "INSTALL.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "skill",
+    "multichannel",
+    "xiaohongshu",
+    "wechat",
+    "douyin"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.2-rc.1 <0.3.0"
+  },
+  "scripts": {
+    "test": "node --test && node scripts/check-package.cjs .",
+    "check": "node scripts/check-package.cjs .",
+    "sync-assets": "node scripts/sync-assets.mjs",
+    "install-plugin": "node scripts/install.mjs",
+    "uninstall-plugin": "node scripts/install.mjs --uninstall",
+    "check-install": "node scripts/install.mjs --check"
+  },
+  "license": "MIT",
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}

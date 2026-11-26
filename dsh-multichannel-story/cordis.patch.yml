@@ -1,0 +1,14 @@
+# dsh-multichannel-story bundle patch.
+#
+# This bundle adds exactly one Host row. It registers the shipped copy of the
+# multichannel-story skill as a bundled skill provider, so the skill shows up
+# in every Session's skill catalog without copying files into
+# ~/.agents/skills/. It inserts no overrides, replaces no shipped row, adds no
+# tool, no prompt section and no event listener; its optional sidebar entry and
+# panel live in the Client half and disappear with the bundle, so the Harness
+# keeps working exactly as before when this row is disabled or removed.
+#
+# Install: plugin_manager(action="install_bundle", target="<abs path to this dir>")
+- insert:
+    - id: multichannel-story
+      name: 'dsh-multichannel-story'

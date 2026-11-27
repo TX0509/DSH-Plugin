@@ -9,10 +9,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
+import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const CLIENT_FILE = join(PLUGIN_DIR, 'client.js')
+// 与 scripts/check-package.cjs 共用同一份「色卡数据切片」，不要各写一份锚点。
+const { splitThemes } = createRequire(import.meta.url)(join(PLUGIN_DIR, 'scripts', 'theme-block.cjs'))
 
 // ---------------------------------------------------------------- 假环境
 
@@ -352,19 +355,26 @@ test('store 订阅/取消订阅与去重', () => {
 
 // ---------------------------------------------------------------- 开始页
 
+/** 开始页的默认 props：风格与配色停在「自动」，各用例只覆盖自己关心的字段。 */
+const startPageProps = (overrides = {}) => ({
+  preset: 'deck',
+  onPreset: () => {},
+  choice: { ...internals.DEFAULT_CHOICE },
+  onStyle: () => {},
+  onTheme: () => {},
+  onStart: () => {},
+  error: '',
+  busy: false,
+  status: 'idle',
+  baseId: 'test',
+  i18n: internals.createI18n(fakeContext().ctx),
+  ...overrides,
+})
+
 test('开始页：标题、三档预设、主按钮只写「开始」', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
-  const tree = internals.StartPage({
-    preset: 'video',
-    onPreset: () => {},
-    onStart: () => {},
-    error: '',
-    busy: false,
-    status: 'idle',
-    baseId: 'test',
-    i18n,
-  })
+  const tree = internals.StartPage(startPageProps({ preset: 'video' }))
   const all = texts(tree)
   for (const expected of [
     internals.COPY.title.zh,
@@ -386,10 +396,16 @@ test('开始页：标题、三档预设、主按钮只写「开始」', () => {
     assert.equal(removed, undefined, '被移除的文案键不该残留')
   }
 
-  const radios = byRole(tree, 'radio')
+  // 单选元素现在有两组：产物预设（3 档）与风格（自动 + 两种风格）。
+  const radios = flatten(byRole(tree, 'radiogroup')[0]).filter((element) => element.props.role === 'radio')
   assert.equal(radios.length, 3, '三档预设都要可点')
   assert.equal(radios.filter((radio) => radio.props['aria-checked'] === true).length, 1)
-  assert.equal(byRole(tree, 'radiogroup').length, 1)
+  // 两段单选：产物预设 + 风格（配色只在选定风格后才出现）。
+  assert.equal(byRole(tree, 'radiogroup').length, 2)
+  assert.deepEqual(
+    byRole(tree, 'radiogroup').map((group) => group.props['aria-label']),
+    [internals.COPY.pickTitle.zh, internals.COPY.styleLabel.zh],
+  )
   // 读屏名只读标题，说明走 describedby；不能把整段介绍塞进按钮名。
   assert.equal(radios[1].props['aria-labelledby'], 'test-preset-video-title')
   assert.equal(radios[1].props['aria-describedby'], 'test-preset-video-desc')
@@ -403,7 +419,10 @@ test('开始页：标题、三档预设、主按钮只写「开始」', () => {
     '主按钮只写「开始」',
   )
   // 视觉上不重复，读屏名仍要带上当前档位，免得按下去不知道会用哪一档。
-  assert.equal(cta.props['aria-label'], `${internals.COPY.start.zh}：${internals.PRESETS[1].title.zh}`)
+  assert.equal(
+    cta.props['aria-label'],
+    `${internals.COPY.start.zh}：${internals.PRESETS[1].title.zh} · ${internals.COPY.styleAuto.zh}`,
+  )
   // 主按钮不再挂旁注；无障碍名仍由预设分组承担。
   assert.equal(cta.props['aria-describedby'], undefined)
   assert.equal(byRole(tree, 'radiogroup')[0].props['aria-label'], internals.COPY.pickTitle.zh)
@@ -419,7 +438,7 @@ test('开始页：标题、三档预设、主按钮只写「开始」', () => {
 test('开始页只剩一列：没有右侧检查/流程，也没有提示词预览', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
-  const tree = internals.StartPage({ preset: 'deck', onPreset: () => {}, onStart: () => {}, error: '', busy: false, status: 'idle', baseId: 'test', i18n })
+  const tree = internals.StartPage(startPageProps())
   assert.equal(flatten(tree).filter((element) => element.type === 'details').length, 0, '页面上不再有可折叠块')
   assert.equal(byClassAll(tree, 'mcs-step').length, 0)
   assert.equal(byRole(tree, 'list').length, 0, '不再有检查项列表')
@@ -430,7 +449,7 @@ test('开始页只剩一列：没有右侧检查/流程，也没有提示词预�
 test('开始页：打开会话期间按钮禁用并显示进行中，成功后给出反馈', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
-  const base = { preset: 'deck', onPreset: () => {}, onStart: () => {}, error: '', baseId: 'test', i18n }
+  const base = startPageProps()
 
   const busyTree = internals.StartPage({ ...base, busy: true, status: 'idle' })
   const busyCta = byClass(busyTree, 'mcs-cta')
@@ -448,19 +467,12 @@ test('开始页：出错时给出可重试的提示', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   let retried = 0
-  const tree = internals.StartPage({
-    preset: 'deck',
-    onPreset: () => {},
-    onStart: () => {},
+  const tree = internals.StartPage(startPageProps({
     error: '打开新会话失败：boom',
     onRetry: () => {
       retried += 1
     },
-    busy: false,
-    status: 'idle',
-    baseId: 'test',
-    i18n,
-  })
+  }))
   const error = byClass(tree, 'mcs-error')
   assert.equal(error.props.role, 'alert')
   const retry = flatten(error).find((element) => element.type === 'button')
@@ -474,17 +486,10 @@ test('预设可切换：点击回调送出对应的 id', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   const picked = []
-  const tree = internals.StartPage({
-    preset: 'deck',
-    onPreset: (id) => picked.push(id),
-    onStart: () => {},
-    error: '',
-    busy: false,
-    status: 'idle',
-    baseId: 'test',
-    i18n,
-  })
-  for (const radio of byRole(tree, 'radio')) radio.props.onClick()
+  const tree = internals.StartPage(startPageProps({ onPreset: (id) => picked.push(id) }))
+  // 只点第一组（产物预设）；页面里还有风格单选，一起点会让这条用例失去隔离性。
+  const presets = flatten(byRole(tree, 'radiogroup')[0]).filter((element) => element.props.role === 'radio')
+  for (const radio of presets) radio.props.onClick()
   assert.deepEqual(picked, ['deck', 'video', 'page'])
 })
 
@@ -492,16 +497,7 @@ test('预设支持方向键换档（roving tabindex）', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   const picked = []
-  const tree = internals.StartPage({
-    preset: 'deck',
-    onPreset: (id) => picked.push(id),
-    onStart: () => {},
-    error: '',
-    busy: false,
-    status: 'idle',
-    baseId: 'test',
-    i18n,
-  })
+  const tree = internals.StartPage(startPageProps({ onPreset: (id) => picked.push(id) }))
   const group = byRole(tree, 'radiogroup')[0]
   // 说明文字已从界面移除，分组只剩无障碍名（不再有 describedby）。
   assert.equal(group.props['aria-describedby'], undefined)
@@ -509,6 +505,180 @@ test('预设支持方向键换档（roving tabindex）', () => {
   group.props.onKeyDown({ key: 'ArrowRight', preventDefault() {} })
   group.props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} })
   assert.deepEqual(picked, ['video', 'page'], '右/左方向键应在三档间循环')
+})
+
+// ---------------------------------------------------------------- 风格与配色
+
+// 主题表由 scripts/sync-themes.mjs 从上游 themes.json 生成：这里断言「结构成立」，
+// 不写死具体 id / 套数——否则上游加一套主题，同步成功反而会让测试变红。
+const styleOf = (id) => internals.findStyle(id)
+
+test('风格与配色表：结构成立，且只包含渲染链路支持的骨架', () => {
+  assert.deepEqual(internals.STYLES.map((style) => style.id), ['magazine', 'swiss'], 'mcs / render.mjs 只支持这两种')
+  const ids = internals.STYLES.flatMap((style) => style.themes.map((theme) => theme.id))
+  assert.ok(ids.length > 0, '至少要有一套主题')
+  assert.equal(new Set(ids).size, ids.length, '主题 id（跨风格）不能重复')
+  for (const style of internals.STYLES) {
+    assert.ok(style.themes.length > 0, `${style.id} 没有任何主题`)
+    assert.ok(
+      style.themes.some((theme) => theme.id === style.defaultTheme),
+      `${style.id} 的 defaultTheme 必须属于该风格`,
+    )
+    assert.ok(style.name.zh !== '' && style.name.en !== '', `${style.id} 缺双语名`)
+    assert.ok(style.hint.zh !== '' && style.hint.en !== '', `${style.id} 缺说明`)
+    for (const theme of style.themes) {
+      assert.match(theme.paper, /^#[0-9a-fA-F]{6}$/u, `${theme.id} 的纸色`)
+      assert.match(theme.accent, /^#[0-9a-fA-F]{6}$/u, `${theme.id} 的强调色`)
+      assert.ok(theme.name.zh !== '' && theme.name.en !== '', `${theme.id} 缺双语名`)
+    }
+  }
+})
+
+test('默认「自动」：指令让技能先给建议，不写死风格', () => {
+  const text = internals.createI18n(fakeContext().ctx).text
+  const prompt = internals.promptFor('deck', text)
+  assert.ok(prompt.startsWith(internals.START_PREFIX.zh))
+  assert.ok(!prompt.includes('--style'), '自动档不该替用户定风格')
+  assert.ok(prompt.includes('建议'), '自动档要明确要求先给建议')
+  // 回归：预设文案不再把「杂志风」写死。
+  for (const preset of internals.PRESETS) {
+    assert.ok(!preset.prompt.zh.includes('杂志风'), `${preset.id} 不该再预设杂志风`)
+    assert.ok(!preset.prompt.en.includes('magazine'), `${preset.id} 不该再预设杂志风`)
+  }
+})
+
+test('指令分隔符按语言给：中文句号后不塞空格，英文句子之间留空格', () => {
+  const zh = internals.promptFor('deck', (leaf) => leaf.zh)
+  assert.ok(!zh.includes('。 风格与配色'), `中文里不该多一个空格：${zh}`)
+  assert.ok(zh.includes('。风格与配色'), zh)
+  const en = internals.promptFor('deck', (leaf) => leaf.en)
+  assert.ok(en.includes('. Style and palette'), `英文两句之间要留空格：${en}`)
+})
+
+test('少传 choice 时按「自动」渲染，不抛异常', () => {
+  const text = internals.createI18n(fakeContext().ctx).text
+  assert.doesNotThrow(() => internals.StylePicker({ onStyle: () => {}, onTheme: () => {}, text, baseId: 'test' }))
+  const tree = internals.StartPage(startPageProps({ choice: undefined }))
+  assert.equal(byClassAll(tree, 'mcs-theme').length, 0, '缺省选择应停在自动档')
+  assert.match(byClass(tree, 'mcs-cta').props['aria-label'], /自动/u)
+})
+
+test('指定风格与配色：把 --style / --theme 与名字一并写进指令', () => {
+  const text = internals.createI18n(fakeContext().ctx).text
+  const swiss = styleOf('swiss')
+  const swissTheme = swiss.themes[0]
+  const prompt = internals.promptFor('deck', text, { style: swiss.id, theme: swissTheme.id })
+  assert.ok(prompt.includes(`--style ${swiss.id} --theme ${swissTheme.id}`))
+  assert.ok(prompt.includes(swiss.name.zh) && prompt.includes(swissTheme.name.zh))
+
+  const magazine = styleOf('magazine')
+  const magazineTheme = magazine.themes[magazine.themes.length - 1]
+  const en = (leaf) => leaf.en
+  const enPrompt = internals.promptFor('deck', en, { style: magazine.id, theme: magazineTheme.id })
+  assert.ok(enPrompt.includes(`--style ${magazine.id} --theme ${magazineTheme.id}`))
+  assert.ok(enPrompt.includes(magazine.name.en) && enPrompt.includes(magazineTheme.name.en))
+})
+
+test('换风格时配色落到该风格的默认主题；非法组合回落到自动', () => {
+  for (const style of internals.STYLES) {
+    assert.deepEqual(
+      internals.normalizeChoice({ style: style.id }),
+      { style: style.id, theme: style.defaultTheme },
+      `${style.id} 应回落到自己的 defaultTheme`,
+    )
+  }
+  // 主题不属于该风格：换成该风格的默认，而不是留一个渲染时会报错的主题
+  const [first, second] = internals.STYLES
+  assert.deepEqual(
+    internals.normalizeChoice({ style: first.id, theme: second.themes[0].id }),
+    { style: first.id, theme: first.defaultTheme },
+  )
+  assert.deepEqual(internals.normalizeChoice({ style: 'nope', theme: 'ikb' }), { ...internals.DEFAULT_CHOICE })
+  assert.deepEqual(internals.normalizeChoice(null), { ...internals.DEFAULT_CHOICE })
+})
+
+test('选择存本机；坏值或不兼容的组合回落到合法主题', () => {
+  const magazine = styleOf('magazine')
+  const choice = { style: magazine.id, theme: magazine.themes[magazine.themes.length - 1].id }
+  internals.writeChoice(choice)
+  assert.deepEqual(internals.readChoice(), choice)
+
+  storage.set(internals.CHOICE_KEY, '{not json')
+  assert.deepEqual(internals.readChoice(), { ...internals.DEFAULT_CHOICE })
+
+  storage.set(internals.CHOICE_KEY, JSON.stringify({ style: magazine.id, theme: styleOf('swiss').themes[0].id }))
+  assert.deepEqual(internals.readChoice(), { style: magazine.id, theme: magazine.defaultTheme })
+  storage.delete(internals.CHOICE_KEY)
+})
+
+test('选择器：自动档不画色卡，选定风格才出现该风格的配色', () => {
+  const text = internals.createI18n(fakeContext().ctx).text
+  const props = { onStyle: () => {}, onTheme: () => {}, text, baseId: 'test' }
+  const auto = internals.StylePicker({ ...props, choice: { style: 'auto', theme: 'auto' } })
+  assert.equal(byClassAll(auto, 'mcs-theme').length, 0, '自动档不该出现配色色卡')
+  assert.ok(texts(auto).includes(internals.COPY.styleAutoNote.zh), '自动档要说清下一步')
+  assert.equal(byClassAll(auto, 'mcs-theme-chip').length, 0)
+
+  for (const style of internals.STYLES) {
+    const picker = internals.StylePicker({ ...props, choice: { style: style.id, theme: style.defaultTheme } })
+    assert.equal(byClassAll(picker, 'mcs-theme').length, style.themes.length, `${style.id} 的色卡数要等于主题数`)
+  }
+  // 色卡用主题自己的纸色/强调色画：对角各一半
+  const magazine = internals.StylePicker({ ...props, choice: { style: 'magazine', theme: styleOf('magazine').defaultTheme } })
+  const chips = byClassAll(magazine, 'mcs-theme-chip')
+  const firstTheme = styleOf('magazine').themes[0]
+  assert.match(chips[0].props.style.background, new RegExp(firstTheme.paper, 'u'))
+  assert.match(chips[0].props.style.background, new RegExp(firstTheme.accent, 'u'))
+})
+
+test('选择器：点风格送回风格 id，点色卡送回主题 id', () => {
+  const picks = []
+  const text = internals.createI18n(fakeContext().ctx).text
+  const magazineThemes = styleOf('magazine').themes
+  const tree = internals.StylePicker({
+    choice: { style: 'magazine', theme: styleOf('magazine').defaultTheme },
+    onStyle: (id) => picks.push(['style', id]),
+    onTheme: (id) => picks.push(['theme', id]),
+    text,
+    baseId: 'test',
+  })
+  const groups = byRole(tree, 'radiogroup')
+  assert.equal(groups[0].props['aria-label'], internals.COPY.styleLabel.zh)
+  assert.equal(groups[1].props['aria-label'], internals.COPY.themeLabel.zh)
+  const radiosOf = (group) => flatten(group).filter((element) => element.props.role === 'radio')
+  // 不假定每个风格都有两套以上主题：取第二个，没有就取第一个。
+  const secondThemeIndex = Math.min(1, magazineThemes.length - 1)
+  radiosOf(groups[1])[secondThemeIndex].props.onClick()
+  radiosOf(groups[0])[0].props.onClick()
+  assert.deepEqual(picks, [['theme', magazineThemes[secondThemeIndex].id], ['style', 'auto']])
+  // roving tabindex：只有当前档能 Tab 到
+  assert.equal(radiosOf(groups[0]).filter((radio) => radio.props.tabIndex === 0).length, 1)
+})
+
+test('面板里选风格与配色后，写进草稿的指令带上 --style / --theme', () => {
+  const fake = fakeContext()
+  storage.delete(internals.CHOICE_KEY)
+  const mounted = mountPanel(fake)
+  const radiosOf = (group) => flatten(group).filter((element) => element.props.role === 'radio')
+
+  const swiss = styleOf('swiss')
+  // 风格组顺序是「自动 + STYLES」，所以 swiss 的下标要加 1。
+  const swissIndex = internals.STYLES.findIndex((style) => style.id === swiss.id)
+  radiosOf(byRole(mounted.tree, 'radiogroup')[1])[swissIndex + 1].props.onClick()
+  const afterStyle = byRole(mounted.tree, 'radiogroup')
+  assert.equal(afterStyle.length, 3, '选定风格后是三段单选：预设 + 风格 + 配色')
+  const themeRadios = radiosOf(afterStyle[2])
+  assert.equal(themeRadios.length, swiss.themes.length, '色卡数要等于该风格的主题数')
+  themeRadios[0].props.onClick()
+
+  byClass(mounted.tree, 'mcs-cta').props.onClick()
+  assert.equal(fake.started.length, 1)
+  const prompt = fake.started[0][1].prompt
+  assert.ok(prompt.includes(`--style ${swiss.id} --theme ${swiss.themes[0].id}`), prompt)
+  assert.ok(prompt.includes(swiss.themes[0].name.zh), prompt)
+  // 选择记在本机，下次打开还是那一套
+  assert.deepEqual(internals.readChoice(), { style: swiss.id, theme: swiss.themes[0].id })
+  storage.delete(internals.CHOICE_KEY)
 })
 
 // ---------------------------------------------------------------- 设置页
@@ -704,16 +874,7 @@ test('页签方向键把焦点移到目标页签', () => {
 test('预设方向键把焦点移到目标单选行', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
-  const tree = internals.StartPage({
-    preset: 'deck',
-    onPreset: () => {},
-    onStart: () => {},
-    error: '',
-    busy: false,
-    status: 'idle',
-    baseId: 'test',
-    i18n,
-  })
+  const tree = internals.StartPage(startPageProps())
   const focused = []
   // 一次 flatten 取齐元素：flatten 会重新调用函数组件，分两次取会拿到不同实例的 refs。
   const elements = flatten(tree)
@@ -833,7 +994,13 @@ test('client.js 只用主题 token，不写死颜色', () => {
   const source = readFileSync(CLIENT_FILE, 'utf8')
   assert.ok(source.includes('--dsw-alias-'), '应使用 --dsw-alias-* 主题 token')
   assert.ok(source.includes('--dsw-radius-') && source.includes('--dsw-elevation-'), '应使用宿主圆角与阴影 token')
-  const literals = source.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []
+  // 唯一的例外是 STYLES 里的色卡数据：那是「内容主题」的纸色/强调色，只用来画色卡，
+  // 不是界面配色。它必须集中在一个数据块里，其余任何位置（含 CSS）仍不许出现字面色值。
+  // 与 check-package 共用同一份切片实现（scripts/theme-block.cjs），按 mcs:themes 标记，不靠变量名。
+  const split = splitThemes(source)
+  assert.ok(split.ok, '找不到 mcs:themes:begin/end 标记')
+  assert.ok((split.palette.match(/#[0-9a-fA-F]{6}/g) ?? []).length >= 2, '色卡数据应有纸色与强调色')
+  const literals = split.outside.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []
   assert.deepEqual(literals, [], `不应出现字面色值：${literals.join(', ')}`)
 })
 

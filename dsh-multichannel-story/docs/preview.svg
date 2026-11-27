@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="One article flowing into a long-form page, a social card set and a vertical video">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="One article flowing into a long-form page, a social card set and a vertical video, with a style and palette picker">
   <rect x="52" y="74" width="112" height="152" rx="12" fill="none" stroke="#7c8590" stroke-width="2"/>
   <path d="M72 108h72M72 126h72M72 144h58M72 162h40" stroke="#9aa0a8" stroke-width="2" stroke-linecap="round"/>
   <circle cx="120" cy="196" r="7" fill="#c7ccd4"/>
@@ -19,4 +19,16 @@
   <circle cx="532" cy="141" r="17" fill="#4f46e5"/>
   <path d="M527 132.5l14 8.5-14 8.5z" fill="#ffffff"/>
   <rect x="512" y="172" width="40" height="5" rx="2.5" fill="#c7ccd4"/>
+
+  <!-- 风格与配色：两段选择（骨架 + 配色）。与工作台一致，只用形状表达，详情图里不放文字节点。 -->
+  <rect x="52" y="22" width="118" height="20" rx="10" fill="none" stroke="#c7ccd4" stroke-width="1.5"/>
+  <circle cx="70" cy="32" r="3.5" fill="#c7ccd4"/>
+  <circle cx="88" cy="32" r="3.5" fill="#c7ccd4"/>
+  <circle cx="106" cy="32" r="3.5" fill="#4f46e5"/>
+
+  <rect x="52" y="258" width="14" height="14" rx="4" fill="#f1efea" stroke="#c7ccd4" stroke-width="1.2"/>
+  <rect x="72" y="258" width="14" height="14" rx="4" fill="#f1f3f5" stroke="#c7ccd4" stroke-width="1.2"/>
+  <rect x="92" y="258" width="14" height="14" rx="4" fill="#eedfc7" stroke="#c7ccd4" stroke-width="1.2"/>
+  <rect x="112" y="258" width="14" height="14" rx="4" fill="#0e0d0c" stroke="#c7ccd4" stroke-width="1.2"/>
+  <rect x="132" y="258" width="14" height="14" rx="4" fill="#4f46e5" stroke="#c7ccd4" stroke-width="1.2"/>
 </svg>

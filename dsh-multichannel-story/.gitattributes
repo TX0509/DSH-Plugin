@@ -1,0 +1,16 @@
+# 跨平台文本约定：所有文本按 LF 落盘。
+#
+# 为什么需要：Windows 的 Git 默认 core.autocrlf=true 会把检出内容转成 CRLF，
+# 而 assets/MANIFEST.json 记录的是内容哈希——CRLF 检出会让 `assets match MANIFEST`
+# 在 Windows 上整份失配（scripts/asset-hash.cjs 还会做一次 CRLF→LF 归一化兜底）。
+# 同时保证 SKILL.md / 脚本在任何平台上逐字节一致，sync-themes 生成的块不会混入 \r。
+* text=auto eol=lf
+
+# 截图与图标按二进制处理，不要做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.icns binary

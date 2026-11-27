@@ -1,6 +1,6 @@
 {
   "name": "dsh-multichannel-story",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "把一篇文章一次做成网页长文、小红书图文、公众号封面，可选再出一条带男声旁白的抖音竖屏视频（为 DSH Desktop / Web 提供 multichannel-story skill 与可选的侧栏入口）。",
   "type": "module",
   "main": "index.js",
@@ -12,6 +12,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    ".gitattributes",
     "index.js",
     "client.js",
     "cordis.patch.yml",
@@ -44,6 +45,8 @@
     "test": "node --test && node scripts/check-package.cjs .",
     "check": "node scripts/check-package.cjs .",
     "sync-assets": "node scripts/sync-assets.mjs",
+    "sync-themes": "node scripts/sync-themes.mjs",
+    "check-themes": "node scripts/sync-themes.mjs --check",
     "install-plugin": "node scripts/install.mjs",
     "uninstall-plugin": "node scripts/install.mjs --uninstall",
     "check-install": "node scripts/install.mjs --check"

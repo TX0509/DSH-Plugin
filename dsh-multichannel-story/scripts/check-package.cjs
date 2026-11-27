@@ -4,7 +4,10 @@
 // 退出码 1 表示有 FAIL，可直接接进 `npm test` / CI。
 const fs = require('node:fs')
 const path = require('node:path')
-const { createHash } = require('node:crypto')
+const { hashFile } = require('./asset-hash.cjs')
+
+const { splitThemes } = require(path.join(__dirname, 'theme-block.cjs'))
+const { auditPlatform } = require(path.join(__dirname, 'platform-audit.cjs'))
 
 const pkg = path.resolve(process.argv[2] ?? '.')
 let problems = 0
@@ -48,11 +51,71 @@ if (fs.existsSync(path.join(pkg, 'client.js'))) {
   check('client switches are accessible', client.includes('role: \'switch\'') && client.includes("'aria-checked'"))
   check('client respects reduced motion', client.includes('prefers-reduced-motion'))
   check('client adapts to narrow width', client.includes('@media (max-width'))
-  const clientColorLiterals = client.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []
-  check('client has no literal colors', clientColorLiterals.length === 0, clientColorLiterals.join(', '))
+  // 唯一的例外是 STYLES 色卡数据：内容主题的纸色/强调色，用来画预览色块，不参与界面样式。
+  // 切片逻辑与 test/client.test.mjs 共用 scripts/theme-block.cjs（按 mcs:themes 标记，不靠行号/变量名）。
+  const split = splitThemes(client)
+  const clientColorLiterals = split.outside.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []
+  check('client has no literal colors (palette swatches excepted)', clientColorLiterals.length === 0, clientColorLiterals.join(', '))
+  check('client palette block is marked (mcs:themes:begin/end)', split.ok)
+  check('client palette block carries swatches', (split.palette.match(/#[0-9a-fA-F]{6}/g) ?? []).length >= 2)
   check('client avoids packaging its own React', !/require\(['"]react-dom/.test(client))
   check('client avoids internal client packages', !client.includes('@deepseek-ai/dsh-client-'))
 }
+
+// ---------------------------------------------------------------- README 截图
+// 1) 引用的本地图片必须存在且落在包内；2) 扩展名必须与文件魔数一致——
+// 把 PNG 存成 .jpg 会让部分渲染器/优化器读不出来。
+const README_IMAGES = (() => {
+  const file = path.join(pkg, 'README.md')
+  if (!fs.existsSync(file)) return []
+  return [...fs.readFileSync(file, 'utf8').matchAll(/!\[[^\]]*\]\(<?([^)>\s]+)>?\)/gu)]
+    .map((match) => match[1])
+    // 外链（https:、data:）不检查本地文件；其余按包内相对路径处理。
+    .filter((target) => !/^[a-z][a-z0-9+.-]*:/iu.test(target))
+    .map((target) => target.replace(/^\.\//u, ''))
+})()
+
+/** 解析到包内的绝对路径；`docs/../../x` 这类越界写法返回 null。 */
+const imageInside = (relative) => {
+  const abs = path.resolve(pkg, relative)
+  // 必须严格在包目录之内，而且是文件：`docs`（目录）或 `docs/..` 都不算图片。
+  if (!abs.startsWith(pkg + path.sep)) return null
+  try {
+    return fs.statSync(abs).isFile() ? abs : null
+  } catch {
+    return null
+  }
+}
+
+const MAGIC = {
+  '.png': [Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+  '.jpg': [Buffer.from([0xff, 0xd8, 0xff])],
+  '.jpeg': [Buffer.from([0xff, 0xd8, 0xff])],
+  '.svg': [Buffer.from('<svg'), Buffer.from('<?xml')],
+  '.gif': [Buffer.from('GIF8')],
+  '.webp': [Buffer.from('RIFF')],
+}
+const magicOf = (file) => {
+  const head = fs.readFileSync(file).subarray(0, 8)
+  return Object.entries(MAGIC).find(([, signatures]) => signatures.some((sig) => head.subarray(0, sig.length).equals(sig)))?.[0]
+}
+check('README images exist', README_IMAGES.every((relative) => imageInside(relative) !== null), README_IMAGES.join(', '))
+check('README images match their extension', README_IMAGES.every((relative) => {
+  const abs = imageInside(relative)
+  if (abs === null) return false
+  const expected = path.extname(relative).toLowerCase()
+  const actual = magicOf(abs)
+  return actual !== undefined && (actual === expected || (expected === '.jpeg' && actual === '.jpg'))
+}), README_IMAGES.map((relative) => {
+  const abs = imageInside(relative)
+  if (abs === null) return `${relative} 缺失或越出包目录`
+  return `${relative} 实际是 ${magicOf(abs) ?? '未知格式'}`
+}).join(', '))
+
+// ---------------------------------------------------------------- 跨平台（macOS / Windows）
+// 「支持两个平台」不能只写在 README 里：这里把会让 Windows 直接坏掉的几件事变成可执行检查。
+// 实现放在 scripts/platform-audit.cjs，test/platform.test.mjs 复用同一份，避免两处漂移。
+for (const item of auditPlatform(pkg)) check(item.label, item.ok, item.detail ?? '')
 
 // ---------------------------------------------------------------- 仓库约定：不提交个人绝对路径
 const TEXT_FILES = ['README.md', 'INSTALL.md', 'package.json', 'cordis.patch.yml', 'index.js', 'locale/en.json', 'locale/zh.json', 'docs/DETAIL.md', 'docs/DETAIL.zh.md']
@@ -139,7 +202,7 @@ if (fs.existsSync(manifestPath)) {
       }
       const relative = path.relative(assetDir, full).split(path.sep).join('/')
       if (relative === 'MANIFEST.json') continue
-      actual[relative] = createHash('sha256').update(fs.readFileSync(full)).digest('hex')
+      actual[relative] = hashFile(full)
     }
   }
   walk(assetDir)

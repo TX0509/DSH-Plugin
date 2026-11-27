@@ -20,8 +20,8 @@
  * 现有副本（否则会留下一个"能激活但缺文件"的半成品包）。
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { createHash } from 'node:crypto'
-import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+import assetHash from './asset-hash.cjs'
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PACKAGE_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -200,13 +200,23 @@ function writeManifest(root) {
   walkFiles(root, (full) => {
     const relativePath = relativeIn(root, full)
     if (relativePath === MANIFEST_NAME) return
-    hashes[relativePath] = createHash('sha256').update(readFileSync(full)).digest('hex')
+    hashes[relativePath] = assetHash.hashFile(full)
   })
   const sorted = {}
   for (const key of Object.keys(hashes).sort()) sorted[key] = hashes[key]
   const manifest = { generatedBy: 'scripts/sync-assets.mjs', sourceSkill: 'multichannel-story', files: sorted }
   writeFileSync(join(root, MANIFEST_NAME), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
   return manifest
+}
+
+/** 文本文件统一成 LF（二进制不动）：Windows 来源的 CRLF 会让副本里的 .sh 在 macOS/Linux 上无法执行。 */
+function normalizeLineEndings(root) {
+  walkFiles(root, (full) => {
+    if (!assetHash.TEXT_EXTENSIONS.has(extname(full).toLowerCase())) return
+    const text = readFileSync(full, 'utf8')
+    if (!text.includes('\r\n')) return
+    writeFileSync(full, text.replace(/\r\n/g, '\n'), 'utf8')
+  })
 }
 
 let files = 0
@@ -223,6 +233,8 @@ function stage() {
   copy('SKILL.md')
   copy('references')
   copy('scripts')
+  // 先统一换行再统计/写清单：清单哈希本来就按 LF 归一化，内容也应当是真的 LF。
+  normalizeLineEndings(STAGING_DIR)
   walkFiles(STAGING_DIR, (full) => {
     const relativePath = relativeIn(STAGING_DIR, full)
     if (EXCLUDED.has(relativePath)) {

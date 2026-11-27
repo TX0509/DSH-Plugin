@@ -7,7 +7,7 @@
  *
  *   node scripts/mcs.mjs preflight [--page|--cards|--video|--images|--all] [--json]
  *   node scripts/mcs.mjs page <项目目录> [--out x.html] [--force] [--style magazine|swiss]
- *                                    [--theme indigo-porcelain] [--embed]
+ *                                    [--theme <主题 id>] [--embed]
  *                                    [--brand "#76B900"] [--cap-fig "文件名:宽:高"]…
  *   node scripts/mcs.mjs cards <任务目录> [--no-validate] [--allow-labels] [--seed editorial|swiss]
  *   node scripts/mcs.mjs brand "#76B900" [--family magazine|swiss]
@@ -607,7 +607,7 @@ function preflight(args) {
 
 function pageUsage() {
   out('用法：node scripts/mcs.mjs page <项目目录> [--out x.html] [--force] [--style magazine|swiss]')
-  out('                                    [--theme indigo-porcelain] [--embed] [--brand "#76B900"]')
+  out('                                    [--theme <主题 id>] [--embed] [--brand "#76B900"]')
   out('                                    [--cap-fig "文件名:宽:高"]…')
   out('  --out      必须以 .html 结尾、落在项目目录内；已存在的文件默认拒绝，--force 才覆盖普通文件。')
   out('  --force    只允许覆盖项目内的普通文件；符号链接一律拒绝（防止写到 article.md 或项目外）。')
@@ -679,7 +679,9 @@ function page(args) {
     err(`--style 只支持 magazine|swiss（收到：${values.style}）`)
     return 2
   }
-  const theme = values.theme ?? 'indigo-porcelain'
+  // 配色不在这里兜底：render.mjs 没收到 --theme 时会用该风格在 themes.json 里的 default，
+  // 那张表归「歸藏设计」插件维护。写死一个默认主题就会和上游漂移（瑞士风还会因此落到杂志风的主题上）。
+  const theme = values.theme
   if (values.theme !== undefined && !KEBAB_CASE.test(values.theme)) {
     err(`--theme 必须是 kebab-case（小写字母/数字/连字符，收到：${values.theme}）`)
     return 2
@@ -739,7 +741,8 @@ function page(args) {
   }
   const render = join(guizangRoot, 'skills', 'guizang-page-skill', 'scripts', 'render.mjs')
 
-  const renderArgs = [render, article, annotations, outFile, '--style', style, '--theme', theme]
+  const renderArgs = [render, article, annotations, outFile, '--style', style]
+  if (theme !== undefined) renderArgs.push('--theme', theme)
   if (values.embed === true) renderArgs.push('--embed')
   if (values.brand !== undefined) renderArgs.push('--brand', values.brand)
   const rendered = spawnSync(nodeBin, renderArgs, { cwd: projectDir, encoding: 'utf8', stdio: 'inherit', windowsHide: true })
@@ -846,7 +849,7 @@ function cards(args) {
     }
     copyFileSync(template, indexFile)
     out('已从 seed 模板创建 index.html —— 先把 <!-- POSTERS_HERE --> 区域替换成真实卡片再渲染。')
-    out('主题用 <html data-theme="indigo-porcelain"> 之类与网页保持一致。')
+    out('主题用 <html data-theme="ikb"> 之类，与网页实际用的主题保持一致（别固定写某一个）。')
     // 退出码 3：只拷贝了未渲染的模板，不能当成“卡片已生成”。
     out('未渲染：本次只拷贝了 seed 模板，补完卡片后重跑 `mcs cards` 才会渲染与校验。')
     return 3
@@ -1410,7 +1413,7 @@ function usage() {
   out('')
   out('  node scripts/mcs.mjs preflight [--page|--cards|--video|--images|--all] [--json]')
   out('  node scripts/mcs.mjs page <项目目录> [--out x.html] [--force] [--style magazine|swiss]')
-  out('                    [--theme indigo-porcelain] [--embed] [--brand "#76B900"] [--cap-fig "文件名:宽:高"]')
+  out('                    [--theme <主题 id>] [--embed] [--brand "#76B900"] [--cap-fig "文件名:宽:高"]')
   out('  node scripts/mcs.mjs cards <任务目录> [--no-validate] [--allow-labels] [--seed editorial|swiss]')
   out('  node scripts/mcs.mjs brand "#76B900" [--family magazine|swiss] [--apply 文件.html] [--tokens]')
   out('  node scripts/mcs.mjs verify <file.mp4> [--expect-w 1080] [--expect-h 1920] [--expect-fps 30]')

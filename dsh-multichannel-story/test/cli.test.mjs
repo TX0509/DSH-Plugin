@@ -156,7 +156,9 @@ function makeFakeGuizangRoot(t) {
   const scripts = join(root, 'skills', 'guizang-page-skill', 'scripts')
   mkdirSync(scripts, { recursive: true })
   writeFileSync(join(scripts, 'render.mjs'), [
-    'import { writeFileSync } from "node:fs"',
+    'import { appendFileSync, writeFileSync } from "node:fs"',
+    // 把收到的参数记下来，用来断言 mcs 传下去的 --style / --theme
+    'if (process.env.FAKE_ARGS_OUT) appendFileSync(process.env.FAKE_ARGS_OUT, JSON.stringify(process.argv.slice(2)) + "\\n")',
     'const out = process.argv[4]',
     'const FOOTER = \'<footer><p>归藏 Page · Built with constrained HTML</p></footer>\'',
     'const variants = {',
@@ -181,6 +183,31 @@ test('page：页脚真的删掉、竖图 CSS 真的插进去', (t) => {
   const html = readFileSync(join(dir, 'out.html'), 'utf8')
   assert.ok(!html.includes('constrained HTML'), '页脚必须真的没了')
   assert.match(html, /task-figure-tuning/u)
+})
+
+test('page：只传用户指定的配色，未指定时交给 render.mjs 的默认主题', (t) => {
+  const dir = makeProject(t)
+  const gz = makeFakeGuizangRoot(t)
+  const argsFile = join(makeTempDir(t, 'mcs-args-'), 'args.jsonl')
+  const env = { GZ_ROOT: gz, FAKE_RENDER_MODE: 'ok', FAKE_ARGS_OUT: argsFile }
+  // 每个用例换一个输出名，避免“已存在文件默认拒绝”挡住后续调用。
+  for (const [name, extra] of [
+    ['default.html', []],
+    ['swiss.html', ['--style', 'swiss']],
+    ['pinned.html', ['--style', 'swiss', '--theme', 'lemon']],
+  ]) {
+    const { code, output } = run(['page', dir, '--out', name, ...extra], env)
+    assert.equal(code, 0, output)
+  }
+  const calls = readFileSync(argsFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line).join(' '))
+  assert.equal(calls.length, 3)
+  // 不写死默认配色：没给 --theme 就不传，由上游 themes.json 的 default 决定，
+  // 这样「歸藏设计」换了默认主题我们不会跟着漂。
+  assert.ok(calls[0].includes('--style magazine'), calls[0])
+  assert.ok(!calls[0].includes('--theme'), calls[0])
+  assert.ok(calls[1].includes('--style swiss'), calls[1])
+  assert.ok(!calls[1].includes('--theme'), calls[1])
+  assert.match(calls[2], /--style swiss --theme lemon/u)
 })
 
 test('page：页脚结构变了、品牌串还在时失败退出', (t) => {

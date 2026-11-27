@@ -3,7 +3,7 @@
  * frontmatter 解析、provider 注册、资源副本与清单是否可用。
  */
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import assetHash from '../scripts/asset-hash.cjs'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -158,7 +158,7 @@ test('资源副本与 MANIFEST.json 完全一致', () => {
       }
       const relative = full.slice(root.length + 1).split('\\').join('/')
       if (relative === 'MANIFEST.json') continue
-      actual[relative] = createHash('sha256').update(readFileSync(full)).digest('hex')
+      actual[relative] = assetHash.hashFile(full)
     }
   }
   walk(root)

@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import assetHash from '../scripts/asset-hash.cjs'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -45,7 +45,7 @@ function fingerprint(dir) {
         walk(full)
         continue
       }
-      const hash = createHash('sha256').update(readFileSync(full)).digest('hex')
+      const hash = assetHash.hashFile(full)
       entries.push(`${full.slice(dir.length)}:${hash}:${statSync(full).size}`)
     }
   }
@@ -83,6 +83,33 @@ const COMPLETE_SOURCE_FILES = {
   'scripts/scaffold-video.py': '# scaffold\n',
   'scripts/install.sh': '#!/usr/bin/env bash\n# 不应进入副本\n',
 }
+
+test('CRLF 源：副本里的文本统一成 LF，二进制保持原样', (t) => {
+  const pkg = copyPackage(t)
+  const source = makeSource(t, {
+    ...COMPLETE_SOURCE_FILES,
+    'SKILL.md': COMPLETE_SOURCE_FILES['SKILL.md'].replace(/\n/gu, '\r\n'),
+    'scripts/preflight.sh': COMPLETE_SOURCE_FILES['scripts/preflight.sh'].replace(/\n/gu, '\r\n'),
+  })
+  // 源里放一个二进制文件，确认不会被换行归一化动过。
+  writeFileSync(join(source, 'references', 'note.bin'), Buffer.from([0x00, 0x0d, 0x0a, 0xff]))
+
+  const { code, output } = runSync(pkg, source)
+  assert.equal(code, 0, output)
+
+  const shell = readFileSync(join(pkg.assets, 'scripts', 'preflight.sh'), 'utf8')
+  assert.ok(!shell.includes('\r'), '副本里的脚本必须是 LF，否则 macOS 上会 bad interpreter')
+  assert.ok(readFileSync(join(pkg.assets, 'SKILL.md'), 'utf8').includes('\n') &&
+    !readFileSync(join(pkg.assets, 'SKILL.md'), 'utf8').includes('\r'))
+  assert.deepEqual(
+    [...readFileSync(join(pkg.assets, 'references', 'note.bin'))],
+    [0x00, 0x0d, 0x0a, 0xff],
+    '二进制不能被改写',
+  )
+  // 清单按归一化后的内容记录：与 LF 源的哈希一致
+  const manifest = JSON.parse(readFileSync(join(pkg.assets, 'MANIFEST.json'), 'utf8')).files
+  assert.equal(manifest['scripts/preflight.sh'], assetHash.hashFile(join(source, 'scripts', 'preflight.sh')))
+})
 
 test('源目录缺必需文件时失败，且现有副本原样保留', (t) => {
   const pkg = copyPackage(t)
@@ -186,7 +213,7 @@ test('--manifest-only：按现有副本重算清单，且重跑逐字节一致',
   assert.equal(first.code, 0, first.output)
   const manifestBytes = readFileSync(join(pkg.assets, 'MANIFEST.json'))
   const recorded = JSON.parse(manifestBytes.toString('utf8')).files
-  const actualHash = createHash('sha256').update(readFileSync(join(pkg.assets, 'scripts', 'mcs.mjs'))).digest('hex')
+  const actualHash = assetHash.hashFile(join(pkg.assets, 'scripts', 'mcs.mjs'))
   assert.equal(recorded['scripts/mcs.mjs'], actualHash, '清单要记录改后的哈希')
   assert.ok(!('MANIFEST.json' in recorded), '清单不能记录自己')
   assert.deepEqual(Object.keys(recorded), [...Object.keys(recorded)].sort(), '清单键要排序（保证可重算）')

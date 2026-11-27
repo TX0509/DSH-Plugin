@@ -3,7 +3,26 @@
 ## 流程
 
 1. **落原文**：`article.md` 保留全部正文（可拆段、加 `## ` 章节、加 `chart` 代码块，不删内容）。章节用 `## `，不要用 `###`（渲染器按 `## ` 分节并自动编号）。
-2. **选风格**：默认杂志风（`--style magazine --theme indigo-porcelain`）；叙事/财经/科技长文用杂志风，工程/数据/发布说明可用瑞士风。
+2. **选风格与配色**：用用户在第一步选的 `--style magazine|swiss --theme <id>`，**没有用户指定就不要按默认开跑**。两套骨架，配色见下表（id 与「歸藏设计」插件的 `themes.json` 同一套，颜色由插件按对比度算好，不要自己写色值）：
+
+| 风格 | 主题 id | 名称 | 适合 |
+| --- | --- | --- | --- |
+<!-- mcs:themes:begin -->
+| 杂志风 `magazine` | `ink-classic` | 墨水经典 | 通用分享、商业发布（page skill 自身默认） |
+| | `indigo-porcelain` | 靛蓝瓷 | 科技/研究/数据、工程师文化 |
+| | `forest-ink` | 森林墨 | 自然/可持续/文化/非虚构 |
+| | `kraft-paper` | 牛皮纸 | 怀旧/人文/历史/独立杂志 |
+| | `dune` | 沙丘 | 艺术/设计/时尚/画廊手册 |
+| | `midnight-ink` | 午夜墨 | 深色主题：夜读、电影感、大片照片 |
+| 瑞士风 `swiss` | `ikb` | 克莱因蓝 | 通用、AI/科技产品、设计领域 |
+| | `lemon` | 柠檬黄 | 年轻/运动/零售/Y2K |
+| | `lemon-green` | 柠檬绿 | 生态/健康/Z 世代品牌 |
+| | `safety-orange` | 安全橙 | 工业/警示/汽车/发布会重点页 |
+
+   没给 `--theme` 时由 render.mjs 用该风格的默认主题（杂志风 → `ink-classic`，瑞士风 → `ikb`）。
+<!-- mcs:themes:end -->
+   品牌色走 `--brand "#hex"`（杂志风会把彩度压到 0.12 以内，要鲜亮就用瑞士风）。
+   这一套同时决定卡片 seed（`template-editorial-card` / `template-swiss-card`）、封面的 `data-theme` 和视频骨架的 `paper/ink/accent`。
 3. **写 annotations**：用锚点文字算行号，**不要手工数行**。可用脚本片段：
 
 ```python

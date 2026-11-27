@@ -11,7 +11,7 @@
 1. 拷贝 seed 模板（**不要从空白 HTML 手写**）。模板在「歸藏设计」插件的 `dsh-guizang-design/skills/guizang-social-card-skill/assets/` 下（`mcs cards` 会自动找，找不到 index.html 时直接拷一份）：
    - 杂志风 → `guizang-social-card-skill/assets/template-editorial-card.html`
    - 瑞士风 → `guizang-social-card-skill/assets/template-swiss-card.html`
-2. 主题与网页保持一致：`<html data-theme="indigo-porcelain">`（或网页实际用的主题）。
+2. 风格与主题跟网页一致，别串味：网页用瑞士风就必须拷 `template-swiss-card.html`，`<html data-theme>` 写网页实际用的主题 id（例如 `ikb`、`kraft-paper`），不要固定写 `indigo-porcelain`。
    有品牌色时不要手写颜色值：`mcs brand "#76B900" --apply index.html`（注入 `[data-theme="brand"]` 并切到 brand 主题）。
 3. 替换 `<!-- POSTERS_HERE -->` 区域，每页一个 `.poster` + 一条版式 recipe（M01–M16 / S01–S12）。
 4. 渲染：

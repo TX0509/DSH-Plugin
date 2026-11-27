@@ -2,6 +2,8 @@
 
 Host 半区只向 `ctx.skills` 注册一个技能；客户端半区提供**可选的**侧栏入口与工作台面板（入口在设置里关掉后，插件行为退化成纯 host-only）。Desktop 与 Web 的安装方式相同，只是**装在不同的 profile 里**。
 
+支持 **macOS 与 Windows**（Linux 未验证）。两端用的是同一份 `client.js` 与同一套 Node 脚本；下面的命令在两边都能跑，差异只有：Windows 用 junction 代替 symlink、不要用 `bash` 跑技能脚本、文本按 LF 检入。
+
 ## 1. 前提
 
 - DSH `0.2.2-rc.5`（或满足 `engines.dsh` 的版本），Node `>= 20`。
@@ -36,6 +38,31 @@ node scripts/install.mjs --dry-run    # 只打印计划
 
 **安装或升级后请完全退出并重新打开 DSH。** Desktop 只刷新页面不会重建 bundle；Web 端通常刷新即可，但重启更稳。
 
+## 2.1 按平台安装
+
+**macOS**
+
+```sh
+cd <本插件目录>
+node scripts/install.mjs --check      # 先看当前状态
+node scripts/install.mjs              # web + desktop
+# Desktop 装完请完全退出（⌘Q）再重新打开
+```
+
+**Windows（PowerShell 或 cmd）**
+
+```powershell
+cd <本插件目录>
+node scripts\install.mjs --check
+node scripts\install.mjs             # 建的是 junction（通常不需要管理员权限；遇到 EPERM 改用应用内插件管理器）
+# Desktop 装完请完全退出（托盘/任务管理器确认进程结束）再重新打开
+```
+
+- `DSH_HOME` 不是默认的 `%USERPROFILE%\.dsh` 时，先 `setx DSH_HOME "%USERPROFILE%\dsh"`（PowerShell 用 `$env:DSH_HOME="$env:USERPROFILE\dsh"`），再执行安装。
+- 想确认链接类型：`dir "%USERPROFILE%\.dsh\profiles\desktop\node_modules"` 里应看到 `<JUNCTION>` 指向本插件目录。
+- 技能脚本**不要**用 `bash`（Windows 上的 bash 通常是 WSL，路径与 Python 环境都不同）：统一 `node <插件目录>/assets/multichannel-story/scripts/mcs.mjs <子命令>`；`*.sh` 只是 macOS/Linux 的薄壳。
+- 文本固定 LF、图片按二进制（插件目录 `.gitattributes`）；`MANIFEST` 校验在 CRLF 检出时会先归一化，不会整份失配。
+
 ## 3. 验证
 
 - **设置 → 插件** 里出现「内容工作台」一行，可停用/启用。
@@ -43,6 +70,17 @@ node scripts/install.mjs --dry-run    # 只打印计划
 - 若本机还有手工安装的 `~/.agents/skills/multichannel-story`，**加载的是那份用户副本**（用户级 rank 500 优先于插件的 bundled 600）。要确认插件里的副本生效，先把用户目录那份改名，再重启 DSH 看技能目录。
 - 左侧边栏出现「内容工作台」入口，点开是插件页面（产物说明 + 「开始做一条内容」+ 入口开关）。
 - 命令行自检：`node scripts/install.mjs --check`。
+- 仓库自检（两端都适用）：`node --test`、`node scripts/check-package.cjs .`、`node assets/multichannel-story/scripts/mcs.mjs preflight --page --cards`。
+
+Windows 上额外看这几项（本轮没有 Windows 真机，这部分是给你照着走的清单）：
+
+| 检查 | 期望 |
+| --- | --- |
+| `dir "%USERPROFILE%\.dsh\profiles\desktop\node_modules"` | `dsh-multichannel-story` 是 `<JUNCTION>`，不是真实目录 |
+| `node --test` | 全部通过；1 项「真实上游比对」按设计跳过（需要 `MCS_REQUIRE_UPSTREAM=1`） |
+| `node assets/multichannel-story/scripts/mcs.mjs preflight --page --cards` | 缺哪个依赖就照输出的安装命令补（winget / pip） |
+| 工作台「风格与配色」 | 色卡能点、方向键能换档、窄窗口自动换行 |
+| 装/卸后完全重启 DSH | 插件列表与侧栏入口状态一致，不留残链 |
 
 ## 3.1 工作台与侧栏入口
 
@@ -82,6 +120,10 @@ node scripts/install.mjs --uninstall
 | 改过技能，插件里还是旧内容 | 没重跑 `node scripts/sync-assets.mjs`，或没重启 DSH。`node --test` 会提示 MANIFEST 哈希不一致 |
 | 和 `~/.agents/skills/multichannel-story` 同时存在 | 用户目录那份优先级更高（500 < 600 的 bundled 优先级），删掉用户目录那份即可只保留插件版本 |
 | 技能自检报缺依赖 | 按 `assets/multichannel-story/references/setup.md` 安装；缺依赖时技能会停下说明，不会降级交付 |
+| Windows：`bash` 报找不到文件 / 路径全乱 | 那是 WSL，不是同一个文件系统。技能脚本统一用 `node <插件目录>/assets/multichannel-story/scripts/mcs.mjs …`，不要用 `*.sh` |
+| Windows：看不出链接是不是 junction | 用 `dir /AL`，或在 PowerShell 里 `Get-Item <路径>` 看 `LinkType`；脚本装出来的是 `<JUNCTION>` |
+| Windows：`node --test` 有 1 项 skipped | 是「真实上游比对」，需要 `MCS_REQUIRE_UPSTREAM=1` 才跑；不是失败 |
+| Windows：MANIFEST 校验失败但没改过文件 | 现在纯 CRLF/LF 差异已被哈希归一化，不会因此失败。还失败说明内容真的变了，或改的是图片等二进制（按原始字节校验）；确认后重跑 `node scripts/sync-assets.mjs --manifest-only`，或从源目录重新同步 |
 
 ## 7. 手动安装（无 Node 时）
 

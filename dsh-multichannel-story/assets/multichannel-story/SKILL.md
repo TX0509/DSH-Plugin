@@ -1,6 +1,6 @@
 ---
 name: multichannel-story
-description: 把一篇文章、一份素材或一个选题，一次性做成多平台成品：精排网页长文（杂志风）+ 小红书图文卡片 + 公众号封面（21:9 主封面与 1:1 分享卡），并可选择追加一条抖音竖屏短视频（含自然男声旁白）。当用户说「把这篇排版成网页」「做成小红书图文」「出公众号封面」「顺便剪个抖音视频」「一条内容分发多平台」「做个内容三件套」，或一次性要网页+卡片+视频时使用。依赖歸藏设计插件、OpenMotion、ego-browser、图库工具和 edge-tts 语音链路，开跑前必须先做环境自检。
+description: 把一篇文章、一份素材或一个选题，一次性做成多平台成品：精排网页长文（杂志风或瑞士风，配色在开工前选）+ 小红书图文卡片 + 公众号封面（21:9 主封面与 1:1 分享卡），并可选择追加一条抖音竖屏短视频（含自然男声旁白）。当用户说「把这篇排版成网页」「做成小红书图文」「出公众号封面」「顺便剪个抖音视频」「一条内容分发多平台」「做个内容三件套」，或一次性要网页+卡片+视频时使用。依赖歸藏设计插件、OpenMotion、ego-browser、图库工具和 edge-tts 语音链路，开跑前必须先做环境自检。
 license: MIT
 metadata:
   author: DSH session multichannel-story
@@ -101,7 +101,7 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 | 免费图库配图 | dsh-stock-images |
 | 需要生成配图 | dsh-image-gen（非必要不生成） |
 
-## 第一步：一次问清三件事
+## 第一步：一次问清四件事
 
 用 `ask_user_question` 一口气问完，不要分批打断：
 
@@ -109,8 +109,17 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
    同时说明可选的工作流路径（一篇文章三种出口 / 先去 AI 味再排版 / 封面矩阵 / 品牌套件 / 中英双版本 / 演讲回收），用户点名哪条就按哪条的 steps 走。
 2. **视频音色**（选了视频才问）：把 `references/voice.md` 的音色表列出来让用户选 —— 云健（成熟男声·纪实，默认）/ 云扬（新闻男声·稳）/ 云希（年轻男声·轻快）/ 云夏（少年音）/ 自带录音。同时问一句是否要配乐（默认只做旁白）。
 3. **素材口径**：用户自己有图 / 允许抓公开素材（ego-browser + 图库）/ 允许 AI 生成（非必要不生成）。
+4. **风格与配色**（不预设，必须让用户选）：两段问，先风格再配色。
+   <!-- mcs:themes:begin -->
+   - 杂志风 `magazine`：`ink-classic` 墨水经典 / `indigo-porcelain` 靛蓝瓷 / `forest-ink` 森林墨 / `kraft-paper` 牛皮纸 / `dune` 沙丘 / `midnight-ink` 午夜墨
+   - 瑞士风 `swiss`：`ikb` 克莱因蓝 / `lemon` 柠檬黄 / `lemon-green` 柠檬绿 / `safety-orange` 安全橙
+   <!-- mcs:themes:end -->
+   - 可以随选项附一句适配说明（例如技术/数据长文配靛蓝瓷、发布说明配克莱因蓝），但**不要替用户决定，也不要因为「用户没说」就按某个默认风格开跑**。
+   - 用户已在指令里写明风格或主题（`--style swiss --theme ikb`、「瑞士风·克莱因蓝」都算）就照做，不再问这一项。
 
-顺带确认：主题风格（默认杂志风·靛蓝瓷）、是否需要中文译文（外文素材/推文默认译成中文）、发布平台规格。
+这套风格与配色会贯穿网页、卡片 seed、封面和视频 token，改一处就等于全都改。
+
+顺带确认：是否需要中文译文（外文素材/推文默认译成中文）、发布平台规格。
 
 ## 第二步：事实与文案
 
@@ -124,13 +133,13 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 
 1. 原文原样落到 `article.md`（可拆段、可加图表块，不删内容）。
 2. 用脚本按锚点文字算行号生成 `annotations.json`（不要手工数行号）。
-3. `mcs page <项目目录> --out <标题>.html [--brand "#76B900"] [--cap-fig "文件名:660:840"]` 渲染 + 注入两条必要后处理：竖幅人像按栏宽收窄、删除页脚 `归藏 Page · Built with constrained HTML`。两条都会核对是否真的生效（页脚还在、或没有 `</head>` 插不进 CSS 就直接失败）。
+3. `mcs page <项目目录> --out <标题>.html [--style magazine|swiss] [--theme <主题 id>] [--brand "#76B900"] [--cap-fig "文件名:660:840"]` 渲染 + 注入两条必要后处理：竖幅人像按栏宽收窄、删除页脚 `归藏 Page · Built with constrained HTML`。两条都会核对是否真的生效（页脚还在、或没有 `</head>` 插不进 CSS 就直接失败）。
    `--out` 的安全规则：必须是项目目录内的 `.html`、不能指向 `article.md` / `annotations.json`、不能是符号链接、已存在的文件默认拒绝（确认覆盖项目内普通文件才加 `--force`）；`--cap-fig` 的文件名不能含 `<`、`>`、控制字符或换行。
 4. 打开验证（图片加载、目录、移动端 390px），再导出 PDF 与长图。**导出用 `mcs page` 末尾打印的 argv（JSON 数组）按数组执行，不要把它拼成一行 shell 命令**（项目名/文件名里可能有 `$(...)`、反引号或空格）。
 
 ## 第四步：小红书 + 公众号封面（guizang-social-card-skill）
 
-按 `references/cards.md`：拷贝 seed 模板 → 规划 6–9 张 3:4 → `mcs cards <任务目录>` 渲染 → 看 PNG 逐张自检 → `validate-social-deck` 跑到 0 fail。
+按 `references/cards.md`：按用户选的风格拷对应 seed（杂志风 `template-editorial-card.html` / 瑞士风 `template-swiss-card.html`），`<html data-theme>` 与网页保持一致 → 规划 6–9 张 3:4 → `mcs cards <任务目录>` 渲染 → 看 PNG 逐张自检 → `validate-social-deck` 跑到 0 fail。
 
 `mcs cards` 的退出码要按事实理解：`0` 才是渲染+校验都过；`3` 表示只拷了 seed 模板、还没渲染（不算交付）；`1` 表示画面上有比例/尺寸标注、`output/` 里没有 PNG、或校验器没跑起来/校验有 FAIL。`--allow-labels` 只在确认标注必须保留时用。
 

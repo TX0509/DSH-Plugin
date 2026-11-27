@@ -48,6 +48,19 @@ window.__ModuleLoader__.load({
       tabSettings: { zh: '设置', en: 'Settings' },
 
       pickTitle: { zh: '这次要做什么', en: 'What this run produces' },
+      styleTitle: { zh: '风格与配色', en: 'Style and palette' },
+      styleLabel: { zh: '页面风格', en: 'Page style' },
+      themeLabel: { zh: '配色主题', en: 'Palette' },
+      styleAuto: { zh: '自动', en: 'Auto' },
+      // 自动档不能只是「不说话」：要说清技能会先给建议，否则用户以为选了个看不见的风格。
+      styleAutoNote: {
+        zh: '不预设风格：技能会先按内容给 2–3 组「风格 + 配色」建议，你挑完再动手。',
+        en: 'No preset: the skill first suggests two or three style + palette pairs for your content, then starts once you pick.',
+      },
+      stylePinnedNote: {
+        zh: '网页、卡片、封面与视频共用这一套；选完会写进指令，技能不再另外问你。',
+        en: 'The page, cards, covers and video all share it; the choice is written into the prompt, so the skill will not ask again.',
+      },
       // 按钮上只写「开始」：做哪一档已由上面的单选组表达，不必在按钮里重复一遍。
       start: { zh: '开始', en: 'Start' },
       ctaBusy: { zh: '正在打开…', en: 'Opening…' },
@@ -72,8 +85,8 @@ window.__ModuleLoader__.load({
         desc: { zh: '三条主产物，同一套主题与素材；6–9 张 3:4 卡片，21:9 与 1:1 封面各自构图。', en: 'The three main deliverables on one theme: 6–9 cards at 3:4, plus separately composed 21:9 and 1:1 covers.' },
         tag: { zh: '默认', en: 'Default' },
         prompt: {
-          zh: '做一条内容：网页长文（杂志风）+ 小红书图文 + 公众号封面（21:9 主封面与 1:1 分享卡）。',
-          en: 'Make one piece: a long-form web page (magazine style) + Xiaohongshu cards + WeChat covers (21:9 main cover and 1:1 share card).',
+          zh: '做一条内容：网页长文 + 小红书图文 + 公众号封面（21:9 主封面与 1:1 分享卡）。',
+          en: 'Make one piece: a long-form web page + Xiaohongshu cards + WeChat covers (21:9 main cover and 1:1 share card).',
         },
       },
       {
@@ -82,8 +95,8 @@ window.__ModuleLoader__.load({
         desc: { zh: '三样都做，再加一条 1080×1920 竖屏成片：自然男声旁白逐句对齐分镜，导出后核对音轨与响度。要多 ffmpeg 与语音链路，耗时明显更长。', en: 'All three, plus a 1080×1920 vertical cut with a natural male voice-over aligned shot by shot and checked after export. Needs ffmpeg and the voice chain, so it takes noticeably longer.' },
         tag: { zh: '含视频', en: 'With video' },
         prompt: {
-          zh: '做一条内容：网页长文（杂志风）+ 小红书图文 + 公众号封面（21:9 主封面与 1:1 分享卡），再加一条抖音竖屏视频，自然男声旁白。',
-          en: 'Make one piece: a long-form web page (magazine style) + Xiaohongshu cards + WeChat covers (21:9 main cover and 1:1 share card), plus a vertical Douyin video with a natural male voice-over.',
+          zh: '做一条内容：网页长文 + 小红书图文 + 公众号封面（21:9 主封面与 1:1 分享卡），再加一条抖音竖屏视频，自然男声旁白。',
+          en: 'Make one piece: a long-form web page + Xiaohongshu cards + WeChat covers (21:9 main cover and 1:1 share card), plus a vertical Douyin video with a natural male voice-over.',
         },
       },
       {
@@ -92,16 +105,114 @@ window.__ModuleLoader__.load({
         desc: { zh: '目录、图表、图注与许可表齐全，导出 PDF 与长图；最快的一条。', en: 'TOC, figures, captions and a license table, exported as PDF and a long image; the fastest path.' },
         tag: { zh: '最快', en: 'Fastest' },
         prompt: {
-          zh: '只要网页长文（杂志风），不要卡片、封面和视频。',
-          en: 'Only the long-form web page (magazine style); no cards, covers or video.',
+          zh: '只要网页长文，不要卡片、封面和视频。',
+          en: 'Only the long-form web page; no cards, covers or video.',
         },
       },
     ]
 
+    // <mcs:themes:begin>
+    /**
+     * 风格与配色：由 scripts/sync-themes.mjs 从「歸藏设计」插件的 themes.json 生成，不要手改。
+     * 这里只放选择器要显示的东西（名称 + 纸色 + 强调色），真正渲染仍由那个插件的
+     * render.mjs 按 `--style / --theme` 决定；纸色与强调色只用来画色卡，不写进任何样式规则。
+     */
+    const STYLES = [
+      {
+        id: 'magazine',
+        name: { zh: '杂志风', en: 'Magazine' },
+        hint: { zh: '衬线标题、纸色底、交叉线纹理', en: 'Serif headings, paper ground, hairline texture' },
+        defaultTheme: 'ink-classic',
+        themes: [
+          { id: 'ink-classic', name: { zh: '墨水经典', en: 'Ink Classic' }, paper: '#f1efea', accent: '#111111' },
+          { id: 'indigo-porcelain', name: { zh: '靛蓝瓷', en: 'Indigo Porcelain' }, paper: '#f1f3f5', accent: '#315d93' },
+          { id: 'forest-ink', name: { zh: '森林墨', en: 'Forest Ink' }, paper: '#f5f1e8', accent: '#2e6b4f' },
+          { id: 'kraft-paper', name: { zh: '牛皮纸', en: 'Kraft Paper' }, paper: '#eedfc7', accent: '#9b5a2e' },
+          { id: 'dune', name: { zh: '沙丘', en: 'Dune' }, paper: '#f0e6d2', accent: '#8f7650' },
+          { id: 'midnight-ink', name: { zh: '午夜墨', en: 'Midnight Ink' }, paper: '#0e0d0c', accent: '#d4a04a' },
+        ],
+      },
+      {
+        id: 'swiss',
+        name: { zh: '瑞士风', en: 'Swiss' },
+        hint: { zh: '无衬线细体、冷灰底、直角与网格', en: 'Thin sans, cool grey ground, square corners, grid' },
+        defaultTheme: 'ikb',
+        themes: [
+          { id: 'ikb', name: { zh: '克莱因蓝', en: 'IKB' }, paper: '#fafaf8', accent: '#002FA7' },
+          { id: 'lemon', name: { zh: '柠檬黄', en: 'Lemon' }, paper: '#fafaf8', accent: '#FFD500' },
+          { id: 'lemon-green', name: { zh: '柠檬绿', en: 'Lemon Green' }, paper: '#fafaf8', accent: '#C5E803' },
+          { id: 'safety-orange', name: { zh: '安全橙', en: 'Safety Orange' }, paper: '#fafaf8', accent: '#FF6B35' },
+        ],
+      },
+    ]
+    // <mcs:themes:end>
+
+    /** 未选风格时：让技能先给建议，而不是替用户定一个默认值。 */
+    const AUTO_CHOICE = 'auto'
+    const CHOICE_KEY = 'dsh-multichannel-story:style'
+    const DEFAULT_CHOICE = { style: AUTO_CHOICE, theme: AUTO_CHOICE }
+
+    const findStyle = (id) => STYLES.find((style) => style.id === id)
+
+    /**
+     * 把任意来源（localStorage、旧版本记录、点了某个按钮）的选择收敛成合法值：
+     * 风格优先，主题必须属于该风格；主题缺省或不属于该风格时用该风格在 themes.json 里的 default。
+     */
+    function normalizeChoice(input) {
+      const style = findStyle(input?.style)
+      if (style === undefined) return { ...DEFAULT_CHOICE }
+      const theme = style.themes.find((item) => item.id === input?.theme)
+        ?? style.themes.find((item) => item.id === style.defaultTheme)
+        ?? style.themes[0]
+      return { style: style.id, theme: theme.id }
+    }
+
+    function readChoice() {
+      try {
+        const raw = getStorage()?.getItem(CHOICE_KEY)
+        if (typeof raw !== 'string' || raw === '') return { ...DEFAULT_CHOICE }
+        return normalizeChoice(JSON.parse(raw))
+      } catch {
+        // 存了坏值（手工改过 / 旧格式）时回到自动，不让面板起不来
+        return { ...DEFAULT_CHOICE }
+      }
+    }
+
+    function writeChoice(choice) {
+      try {
+        getStorage()?.setItem(CHOICE_KEY, JSON.stringify(choice))
+      } catch {
+        // 隐私模式 / 配额满：选择仍对本次挂载生效
+      }
+    }
+
+    /**
+     * 把选择写成人话拼在产物指令后面。
+     * 自动档明确要求技能先给建议；指定档把 `--style / --theme` 一并写进去，
+     * 技能照命令跑，不会再来问一遍风格。
+     */
+    function styleClause(text, choice) {
+      const normalized = normalizeChoice(choice)
+      const style = findStyle(normalized.style)
+      if (style === undefined) {
+        return text({
+          zh: '风格与配色我没定：先按内容给 2–3 组「风格 + 配色」建议让我挑，再动手。',
+          en: 'Style and palette are unspecified: suggest two or three style + palette options for this content, let me pick, then start.',
+        })
+      }
+      const theme = style.themes.find((item) => item.id === normalized.theme) ?? style.themes[0]
+      return text({
+        zh: `风格与配色已定：${text(style.name)}·${text(theme.name)}（--style ${style.id} --theme ${theme.id}），本次产物都沿用这一套。`,
+        en: `Style and palette are set: ${text(style.name)} / ${text(theme.name)} (--style ${style.id} --theme ${theme.id}); every deliverable in this run uses them.`,
+      })
+    }
+
     /** 写进草稿的完整指令：显示与实际写入共用这一份，避免两处各拼一遍。 */
-    function promptFor(presetId, text) {
+    function promptFor(presetId, text, choice = DEFAULT_CHOICE) {
       const preset = PRESETS.find((item) => item.id === presetId) ?? PRESETS[0]
-      return `${text(START_PREFIX)}${text(preset.prompt)}`
+      // 中文句号后不需要空格，英文句子之间需要；用文案叶子让 i18n 服务决定。
+      const gap = text({ zh: '', en: ' ' })
+      return `${text(START_PREFIX)}${text(preset.prompt)}${gap}${styleClause(text, choice)}`
     }
 
     // ---------------------------------------------------------------- 样式
@@ -254,6 +365,49 @@ window.__ModuleLoader__.load({
 }
 .mcs-preset-desc { grid-column: 2 / span 2; grid-row: 2; color: var(--ink2); font-size: 12px; line-height: 19px; }
 
+/* 风格：胶囊单选。选中用实心墨色（和主按钮同一对 token），
+   浅色主题下也能看出当前档，不依赖 layer 之间的细微差别。 */
+.mcs-styles { display: flex; flex-wrap: wrap; gap: 8px; }
+.mcs-style {
+  height: 36px;
+  padding: 0 15px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 .5px var(--line-strong);
+  color: var(--ink2);
+  font-size: 13px;
+  line-height: 36px;
+  transition: background .18s var(--ease), color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.mcs-style:hover { background: var(--hover); color: var(--ink); }
+.mcs-style[aria-checked="true"] { background: var(--primary); color: var(--on-primary); box-shadow: none; }
+.mcs-style-hint { margin-top: 8px; color: var(--ink3); font-size: 12px; line-height: 19px; }
+
+/* 配色：一行色卡。「纸色 / 强调色」对角切一半，是预览内容主题的色板，
+   不是界面配色——所以这里允许写字面色值（由 STYLES 数据提供，不写进样式规则）。 */
+.mcs-themes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.mcs-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px 0 10px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 .5px var(--line);
+  color: var(--ink2);
+  font-size: 12.5px;
+  line-height: 36px;
+  transition: box-shadow .18s var(--ease), color .18s var(--ease);
+}
+.mcs-theme:hover { box-shadow: inset 0 0 0 .5px var(--line-strong); color: var(--ink); }
+.mcs-theme[aria-checked="true"] { box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
+.mcs-theme-chip {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--ink) 24%, transparent);
+}
+
 .mcs-cta-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
 .mcs-cta {
   display: inline-flex;
@@ -336,7 +490,7 @@ window.__ModuleLoader__.load({
   .mcs-cta { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mcs-cta, .mcs-tab, .mcs-preset, .mcs-switch, .mcs-switch::after { transition: none; }
+  .mcs-cta, .mcs-tab, .mcs-preset, .mcs-style, .mcs-theme, .mcs-switch, .mcs-switch::after { transition: none; }
 }
 
 /* 桌面窗口 chrome（macOS 红绿灯 / 隐藏标题栏）不占布局高度，主区的入口型页面要自己补
@@ -581,9 +735,114 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
 
     // ---------------------------------------------------------------- 两个视图
 
-    function StartPage({ preset, onPreset, onStart, error, onRetry, busy, status, baseId, i18n }) {
+    /** 胶囊单选组：radiogroup + roving tabindex + 方向键 / Home / End，和 Presets 同一套键盘语义。 */
+    function ChipGroup({ items, value, onChange, label, describedBy, className, chip, baseId, idPrefix }) {
+      const refs = useRef({})
+      const select = (index) => {
+        const next = items[(index + items.length) % items.length]
+        if (next === undefined) return
+        onChange(next.id)
+        refs.current[next.id]?.focus()
+      }
+      const onKeyDown = (event) => {
+        const index = items.findIndex((item) => item.id === value)
+        if (index === -1) return
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+          event.preventDefault()
+          select(index + 1)
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+          event.preventDefault()
+          select(index - 1)
+        } else if (event.key === 'Home') {
+          event.preventDefault()
+          select(0)
+        } else if (event.key === 'End') {
+          event.preventDefault()
+          select(items.length - 1)
+        }
+      }
+      return h('div', {
+        className,
+        role: 'radiogroup',
+        'aria-label': label,
+        'aria-describedby': describedBy,
+        onKeyDown,
+      },
+      items.map((item) => h('button', {
+        key: item.id,
+        type: 'button',
+        role: 'radio',
+        id: `${baseId}-${idPrefix}-${item.id}`,
+        'aria-checked': value === item.id,
+        tabIndex: value === item.id ? 0 : -1,
+        className: chip,
+        ref: (node) => {
+          refs.current[item.id] = node
+        },
+        onClick: () => onChange(item.id),
+      },
+      // 色卡由主题数据提供纸色与强调色；对角切一半，和网页里设置面板的色块同一套画法。
+      item.swatch === undefined ? null : h('span', {
+        className: 'mcs-theme-chip',
+        'aria-hidden': true,
+        style: { background: `linear-gradient(135deg, ${item.swatch.paper} 0 50%, ${item.swatch.accent} 50% 100%)` },
+      }),
+      item.label)))
+    }
+
+    /**
+     * 风格 + 配色：默认停在「自动」，选了具体风格才展开该风格的配色。
+     * 两段都是单选组，键盘行为与预设一致；选择会写进指令，技能不再重复问。
+     */
+    function StylePicker({ choice = DEFAULT_CHOICE, onStyle, onTheme, text, baseId }) {
+      const style = findStyle(choice.style)
+      const styleItems = [
+        { id: AUTO_CHOICE, label: text(COPY.styleAuto) },
+        ...STYLES.map((item) => ({ id: item.id, label: text(item.name) })),
+      ]
+      const themeItems = style === undefined ? [] : style.themes.map((item) => ({
+        id: item.id,
+        label: text(item.name),
+        swatch: { paper: item.paper, accent: item.accent },
+      }))
+      return h('section', { className: 'mcs-section', 'aria-labelledby': `${baseId}-style-title` },
+        h('h2', { className: 'mcs-section-title', id: `${baseId}-style-title` }, text(COPY.styleTitle)),
+        h(ChipGroup, {
+          items: styleItems,
+          value: choice.style,
+          onChange: onStyle,
+          label: text(COPY.styleLabel),
+          className: 'mcs-styles',
+          chip: 'mcs-style',
+          baseId,
+          idPrefix: 'style',
+        }),
+        // 自动档没有配色可选：技能会先给建议，这里说清下一步是什么。
+        style === undefined
+          ? h('p', { className: 'mcs-note' }, text(COPY.styleAutoNote))
+          : [
+            h('p', { className: 'mcs-style-hint', key: 'hint' }, text(style.hint)),
+            h(ChipGroup, {
+              key: 'themes',
+              items: themeItems,
+              value: choice.theme,
+              onChange: onTheme,
+              label: text(COPY.themeLabel),
+              describedBy: `${baseId}-style-title`,
+              className: 'mcs-themes',
+              chip: 'mcs-theme',
+              baseId,
+              idPrefix: 'theme',
+            }),
+            h('p', { className: 'mcs-note', key: 'note' }, text(COPY.stylePinnedNote)),
+          ])
+    }
+
+    function StartPage({ preset, onPreset, choice = DEFAULT_CHOICE, onStyle, onTheme, onStart, error, onRetry, busy, status, baseId, i18n }) {
       const t = i18n.text
       const current = PRESETS.find((item) => item.id === preset) ?? PRESETS[0]
+      const style = findStyle(choice.style)
+      const styleName = style === undefined ? t(COPY.styleAuto) : t(style.name)
       return h('div', { className: 'mcs-page' },
         h('header', { className: 'mcs-head' },
           h('h1', { className: 'mcs-title' }, t(COPY.title))),
@@ -598,15 +857,19 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
               // 视觉上不写小节标题，无障碍名仍用 pickTitle。
               label: t(COPY.pickTitle),
               baseId,
-            })),
+            }))),
+
+        h(StylePicker, { choice, onStyle, onTheme, text: t, baseId }),
+
+        h('section', { className: 'mcs-section' },
           h('div', { className: 'mcs-cta-row' },
             h('button', {
               type: 'button',
               className: 'mcs-cta',
               onClick: onStart,
               disabled: busy,
-              // 可见文字只有「开始」，读屏名补上当前档位，免得按下去不知道会用哪一档。
-              'aria-label': busy ? t(COPY.ctaBusy) : `${t(COPY.start)}：${t(current.title)}`,
+              // 可见文字只有「开始」，读屏名补上当前档位与风格，免得按下去不知道会用哪一档。
+              'aria-label': busy ? t(COPY.ctaBusy) : `${t(COPY.start)}：${t(current.title)} · ${styleName}`,
             },
             h(Icon, { name: 'spark', size: 16 }),
             busy ? t(COPY.ctaBusy) : t(COPY.start))),
@@ -655,6 +918,8 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
         const baseId = useId()
         const [view, setView] = useState('start')
         const [preset, setPreset] = useState(PRESETS[0].id)
+        // 风格与配色也是这次交付的一部分：选择记在本机，下次打开还是上次那一套。
+        const [choice, setChoice] = useState(readChoice)
         const [error, setError] = useState('')
         const [busy, setBusy] = useState(false)
         const [status, setStatus] = useState('idle')
@@ -678,7 +943,7 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
           setError('')
           setStatus('idle')
           setBusy(true)
-          const prompt = promptFor(preset, t)
+          const prompt = promptFor(preset, t, choice)
           const done = () => {
             if (!alive.current) return
             setBusy(false)
@@ -704,6 +969,23 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
 
         const choosePreset = (next) => {
           setPreset(next)
+          setStatus('idle')
+          setError('')
+        }
+
+        // 换风格时配色跟着切到该风格的默认主题：否则会留下一个属于上一个风格的主题 id。
+        const chooseStyle = (next) => {
+          const normalized = normalizeChoice({ style: next })
+          setChoice(normalized)
+          writeChoice(normalized)
+          setStatus('idle')
+          setError('')
+        }
+
+        const chooseTheme = (next) => {
+          const normalized = normalizeChoice({ style: choice.style, theme: next })
+          setChoice(normalized)
+          writeChoice(normalized)
           setStatus('idle')
           setError('')
         }
@@ -746,6 +1028,9 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
               ? h(StartPage, {
                 preset,
                 onPreset: choosePreset,
+                choice,
+                onStyle: chooseStyle,
+                onTheme: chooseTheme,
                 onStart: start,
                 error,
                 onRetry: error === '' ? undefined : start,
@@ -874,8 +1159,17 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
         START_PREFIX,
         COPY,
         PRESETS,
+        STYLES,
+        AUTO_CHOICE,
+        CHOICE_KEY,
+        DEFAULT_CHOICE,
         ICONS,
         promptFor,
+        styleClause,
+        normalizeChoice,
+        readChoice,
+        writeChoice,
+        findStyle,
         readPreference,
         writePreference,
         createStore,
@@ -884,6 +1178,8 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
         Switch,
         Tabs,
         Presets,
+        ChipGroup,
+        StylePicker,
         StartPage,
         SettingsPage,
         makePanel,

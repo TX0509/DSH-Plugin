@@ -48,7 +48,8 @@ window.__ModuleLoader__.load({
       tabSettings: { zh: '设置', en: 'Settings' },
 
       pickTitle: { zh: '这次要做什么', en: 'What this run produces' },
-      ctaPrefix: { zh: '开始：', en: 'Start: ' },
+      // 按钮上只写「开始」：做哪一档已由上面的单选组表达，不必在按钮里重复一遍。
+      start: { zh: '开始', en: 'Start' },
       ctaBusy: { zh: '正在打开…', en: 'Opening…' },
       ctaDone: { zh: '已请求写入草稿。去会话里补上文章或选题，再发送（没打开会话时那里会有提示）。', en: 'Asked to write the draft. Add your article or topic in the Session, then send (any failure to open it is reported there).' },
       tabDescription: { zh: '一条内容做成网页、卡片、封面，可选视频', en: 'One piece → page, cards, covers, optional video' },
@@ -195,7 +196,13 @@ window.__ModuleLoader__.load({
 
 .mcs-section { margin-top: 32px; }
 
+/* 设置页按「分组」组织：这一条只是其中一个分组标题，字号比开始页的大标题小一档
+   （15px 无衬线），后面再加分组时它是同级的 h2，不会和页面标题抢层级。 */
+.mcs-section-title { margin: 0 0 12px; color: var(--ink); font-size: 15px; line-height: 24px; font-weight: 500; letter-spacing: .01em; }
+
 .mcs-page > .mcs-section:first-of-type { margin-top: 24px; }
+/* 页面第一个元素就是分组时（设置页）不需要顶部的 24px：.mcs-main 已有内边距。 */
+.mcs-page > .mcs-section:first-child { margin-top: 0; }
 .mcs-presets { display: flex; flex-direction: column; gap: 8px; }
 .mcs-presets-wrap { margin-top: 0; }
 /* 预设做成竖排单选行：标题/标签一行、说明一行，比三列窄卡好读，也不会让标签压住标题。 */
@@ -598,9 +605,11 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
               className: 'mcs-cta',
               onClick: onStart,
               disabled: busy,
+              // 可见文字只有「开始」，读屏名补上当前档位，免得按下去不知道会用哪一档。
+              'aria-label': busy ? t(COPY.ctaBusy) : `${t(COPY.start)}：${t(current.title)}`,
             },
             h(Icon, { name: 'spark', size: 16 }),
-            busy ? t(COPY.ctaBusy) : t(COPY.ctaPrefix) + t(current.title))),
+            busy ? t(COPY.ctaBusy) : t(COPY.start))),
           error === '' ? null : h('p', { className: 'mcs-error', role: 'alert' },
             h('span', null, error),
             onRetry === undefined ? null : h('button', {
@@ -618,8 +627,10 @@ html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
       const t = i18n.text
       const enabled = useSyncExternalStore(store.subscribe, store.get)
       return h('div', { className: 'mcs-page' },
-        h('h1', { className: 'mcs-title' }, t(COPY.settingsTitle)),
-        h('section', { className: 'mcs-section' },
+        // 不再用页面大标题：设置以后还会多出别的分组，这里按「分组标题 + 卡片」组织，
+        // 新增分组时同一层级往下排即可。
+        h('section', { className: 'mcs-section', 'aria-labelledby': `${baseId}-entry-title` },
+          h('h2', { className: 'mcs-section-title', id: `${baseId}-entry-title` }, t(COPY.settingsTitle)),
           h('div', { className: 'mcs-card' },
             h('div', { className: 'mcs-row' },
               h('span', { className: 'mcs-row-label', id: `${baseId}-toggle` }, t(COPY.toggle)),

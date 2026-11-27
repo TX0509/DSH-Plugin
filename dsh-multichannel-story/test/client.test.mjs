@@ -352,7 +352,7 @@ test('store 订阅/取消订阅与去重', () => {
 
 // ---------------------------------------------------------------- 开始页
 
-test('开始页：标题、三档预设、主按钮指向当前预设', () => {
+test('开始页：标题、三档预设、主按钮只写「开始」', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   const tree = internals.StartPage({
@@ -380,6 +380,8 @@ test('开始页：标题、三档预设、主按钮指向当前预设', () => {
     internals.COPY.lede, internals.COPY.kicker, internals.COPY.pickHint, internals.COPY.ctaHint,
     internals.COPY.tipsTitle, internals.COPY.customHint, internals.COPY.flowSummary,
     internals.COPY.promptSummary, internals.COPY.promptLabel,
+    // 按钮不再拼「开始：<档位>」，只留「开始」。
+    internals.COPY.ctaPrefix,
   ]) {
     assert.equal(removed, undefined, '被移除的文案键不该残留')
   }
@@ -394,10 +396,14 @@ test('开始页：标题、三档预设、主按钮指向当前预设', () => {
 
   const cta = byClass(tree, 'mcs-cta')
   assert.ok(cta !== undefined, '应有一个主按钮')
-  assert.ok(
-    (cta.children ?? []).some((child) => typeof child === 'string' && child.includes(internals.PRESETS[1].title.zh)),
-    '主按钮要写明这次做哪一档',
+  // 按钮可见文字只有「开始」：做哪一档已由上面的单选组表达，不在按钮里重复一遍说明。
+  assert.deepEqual(
+    (cta.children ?? []).filter((child) => typeof child === 'string'),
+    [internals.COPY.start.zh],
+    '主按钮只写「开始」',
   )
+  // 视觉上不重复，读屏名仍要带上当前档位，免得按下去不知道会用哪一档。
+  assert.equal(cta.props['aria-label'], `${internals.COPY.start.zh}：${internals.PRESETS[1].title.zh}`)
   // 主按钮不再挂旁注；无障碍名仍由预设分组承担。
   assert.equal(cta.props['aria-describedby'], undefined)
   assert.equal(byRole(tree, 'radiogroup')[0].props['aria-label'], internals.COPY.pickTitle.zh)
@@ -507,7 +513,7 @@ test('预设支持方向键换档（roving tabindex）', () => {
 
 // ---------------------------------------------------------------- 设置页
 
-test('设置页：只剩标题与一个开关', () => {
+test('设置页：分组标题 + 一个开关，不再用页面大标题', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   const store = internals.createStore(true)
@@ -516,6 +522,16 @@ test('设置页：只剩标题与一个开关', () => {
   for (const expected of [internals.COPY.settingsTitle.zh, internals.COPY.toggle.zh]) {
     assert.ok(all.includes(expected), `设置页应有「${expected}」`)
   }
+  // 「入口与偏好」只是其中一个分组标题：设置以后还会多出别的分组，
+  // 用 h2.mcs-section-title（15px）而不是开始页那种 30px 的页面大标题。
+  assert.equal(byClass(view, 'mcs-title'), undefined, '设置页不该再用 .mcs-title 大标题')
+  const heading = byClass(view, 'mcs-section-title')
+  assert.ok(heading !== undefined, '设置页应有分组标题')
+  assert.equal(heading.type, 'h2')
+  assert.equal(heading.props.id, 'test-entry-title')
+  assert.deepEqual(texts(heading), [internals.COPY.settingsTitle.zh])
+  const section = byClass(view, 'mcs-section')
+  assert.equal(section.props['aria-labelledby'], 'test-entry-title', '分组要用自己的标题做名字')
   // 回归：导语、开关说明、存储说明都移除了，不再渲染；开关的可访问名仍来自可见文字。
   for (const className of ['mcs-lede', 'mcs-note', 'mcs-caption']) {
     assert.equal(byClass(view, className), undefined, `设置页不应再渲染 .${className}`)
@@ -528,6 +544,19 @@ test('设置页：只剩标题与一个开关', () => {
   assert.equal(switches[0].props['aria-checked'], 'true')
   assert.equal(switches[0].props['aria-labelledby'], 'test-toggle', '开关要用可见文字做名字')
   assert.equal(switches[0].props['aria-describedby'], undefined)
+})
+
+test('分组标题的字号小于页面大标题（设置页会继续加分组）', () => {
+  const source = readFileSync(CLIENT_FILE, 'utf8')
+  const size = (selector) => {
+    const match = source.match(new RegExp(`\\${selector} \\{[^}]*font-size: ([\\d.]+)px`, 'u'))
+    assert.ok(match !== null, `${selector} 应有 font-size`)
+    return Number(match[1])
+  }
+  assert.ok(size('.mcs-section-title') <= 16, '分组标题不该用大字号')
+  assert.ok(size('.mcs-section-title') < size('.mcs-title'), '分组标题要比页面大标题小一档')
+  // 页面第一个元素就是分组时不留 24px 顶部间距，否则标题会掉到内容中间。
+  assert.match(source, /\.mcs-page > \.mcs-section:first-child \{ margin-top: 0; \}/u)
 })
 
 test('插件详情页的配置卡片包含开关与说明', () => {

@@ -2,8 +2,10 @@
 
 ## 流程
 
-1. **落原文**：`article.md` 保留全部正文（可拆段、加 `## ` 章节、加 `chart` 代码块，不删内容）。章节用 `## `，不要用 `###`（渲染器按 `## ` 分节并自动编号）。
-2. **选风格与配色**：用用户在第一步选的 `--style magazine|swiss --theme <id>`，**没有用户指定就不要按默认开跑**。两套骨架，配色见下表（id 与「歸藏设计」插件的 `themes.json` 同一套，颜色由插件按对比度算好，不要自己写色值）：
+1. **落原文并留底**：`article.md` 保留全部正文（可拆段、加 `## ` 章节、加 `chart` 代码块，不删内容）。章节用 `## `，不要用 `###`（渲染器按 `## ` 分节并自动编号）。
+   同目录另存一份未改动的 `article.orig.md` 作为底稿：下一步要改 `article.md`，没有它就 diff 不了、也回滚不了。**不要在没有留底的情况下就地覆盖用户原稿。**
+2. **过 `humanizer-zh`**（默认第二步，不要跳过）：在 `article.md` 上按它的检查项删空泛抬高、伪洞察和无信息评价词；事实、数字、引文、判断、作者语气一律不动。改完给用户一段**简短说明**（改了哪几类、删了什么），按 humanizer-zh 自己的输出约定，不要附逐条命中清单。用户明确说「不要改文案」才略过，`article.orig.md` 照样保留。
+3. **选风格与配色**：用用户在开跑前选的 `--style magazine|swiss --theme <id>`，**没有用户指定就不要按默认开跑**。两套骨架，配色见下表（id 与「歸藏设计」插件的 `themes.json` 同一套，颜色由插件按对比度算好，不要自己写色值）：
 
 | 风格 | 主题 id | 名称 | 适合 |
 | --- | --- | --- | --- |
@@ -23,7 +25,7 @@
 <!-- mcs:themes:end -->
    品牌色走 `--brand "#hex"`（杂志风会把彩度压到 0.12 以内，要鲜亮就用瑞士风）。
    这一套同时决定卡片 seed（`template-editorial-card` / `template-swiss-card`）、封面的 `data-theme` 和视频骨架的 `paper/ink/accent`。
-3. **写 annotations**：用锚点文字算行号，**不要手工数行**。可用脚本片段：
+4. **写 annotations**：用锚点文字算行号，**不要手工数行**。可用脚本片段：
 
 ```python
 lines = open("article.md", encoding="utf-8").read().split("\n")
@@ -33,10 +35,10 @@ def find(sub, start=0):
     return hits[0]
 ```
 
-4. **升格组件**只从这些里选：`pullquote`（独立观点句）、`highlight`（核心判断/数字）、`def-card`（术语解释）、`checklist`（约束/风险清单）、`aside`（补充提示）、`summary-card`（并列案例/速查）、`embed`（内嵌 SVG 或 HTML 卡片）、`figure`（配图）、`drop`（文末 CTA/广告语）。
+5. **升格组件**只从这些里选：`pullquote`（独立观点句）、`highlight`（核心判断/数字）、`def-card`（术语解释）、`checklist`（约束/风险清单）、`aside`（补充提示）、`summary-card`（并列案例/速查）、`embed`（内嵌 SVG 或 HTML 卡片）、`figure`（配图）、`drop`（文末 CTA/广告语）。
    - `figure`/`embed`/`aside`/`summary-card` 是**插入型**（`line` 指向插在哪一行之前，原文保留）；`pullquote`/`highlight`/`checklist`/`drop` 是**替换型**。
    - 行号打偏会渲染出重复段落——渲染后一定翻一遍。
-5. **渲染 + 两条后处理**（`scripts/build-page.sh` 已内置；有品牌色时加 `--brand "#76B900"`，由插件生成受约束主题）：
+6. **渲染 + 两条后处理**（`scripts/build-page.sh` 已内置；有品牌色时加 `--brand "#76B900"`，由插件生成受约束主题）：
 
 ```bash
 # Windows（DSH Desktop）：node "<base>/scripts/mcs.mjs" page …
@@ -56,7 +58,7 @@ node "<base>/scripts/mcs.mjs" page <项目目录> --brand "#76B900" --out brand-
    - 不能指向 `article.md` / `annotations.json`。
    - `--cap-fig` 的文件名会被写进 HTML/CSS：不能含 `<`、`>`、控制字符或换行（否则会被拒绝）。
 
-6. **导出**：
+7. **导出**：
 
    `mcs page` 结束时会打印一段 **导出 argv（JSON 数组）**，例如：
 

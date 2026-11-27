@@ -102,11 +102,11 @@ window.__ModuleLoader__.load({
       {
         id: 'page',
         title: { zh: '只要网页长文', en: 'Only the long-form page' },
-        desc: { zh: '目录、图表、图注与许可表齐全，导出 PDF 与长图；最快的一条。', en: 'TOC, figures, captions and a license table, exported as PDF and a long image; the fastest path.' },
-        tag: { zh: '最快', en: 'Fastest' },
+        desc: { zh: '只出一条产物：目录、图表、图注与许可表齐全，导出 PDF 与长图。仍会先过一遍文案再排版，比全套快，但不是「跳过改稿」。', en: 'One deliverable: TOC, figures, captions and a license table, exported as PDF and a long image. The copy is still cleaned up before typesetting — faster than the full set, but not a copy-editing skip.' },
+        tag: { zh: '单页', en: 'Page only' },
         prompt: {
-          zh: '只要网页长文，不要卡片、封面和视频。',
-          en: 'Only the long-form web page; no cards, covers or video.',
+          zh: '只要网页长文，不要卡片、封面和视频。先把正文按 humanizer-zh 去一遍 AI 味，给我一段简短说明（不要逐条清单），确认后再排版。',
+          en: 'Only the long-form web page; no cards, covers or video. First clean up the copy with humanizer-zh and give me a short summary of the changes (no itemised list); typeset after I confirm.',
         },
       },
     ]

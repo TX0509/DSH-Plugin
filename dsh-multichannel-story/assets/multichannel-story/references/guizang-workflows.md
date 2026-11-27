@@ -42,8 +42,8 @@ node scripts/list-recipes.mjs --lang en
 | 网页 + 小红书 + 公众号 + 抖音视频 | 同上 + 第 5 步（视频与配音） |
 | 只有封面（21:9 / 1:1 / 3:4） | `cover-matrix` |
 | 只有小红书 3:4 组图 | `guizang-social-card-skill` 直接做（不经工作流） |
-| 只有网页 | `guizang-page-skill` 直接做 |
-| 稿件需要先改文风 | `humanize-then-typeset`（改完把主要改动列给用户确认，再排版） |
+| 只有网页 | **默认 `humanize-then-typeset`**：`humanizer-zh` → `guizang-page-skill`（用户明确不要改文案才直接排版） |
+| 稿件需要先改文风 | `humanize-then-typeset`（改完给一段简短说明，不要逐条命中清单，再排版） |
 | PPT/讲稿要成文 | `talk-to-article` |
 | 有品牌色 | `brand-kit`（品牌主题贯穿网页/卡片/视频） |
 | 要中英两版 | `bilingual` |
@@ -87,8 +87,8 @@ $MCS brand "#76B900" --tokens
 ```
 1) node <base>/scripts/list-recipes.mjs     → 确认 one-article-three-outputs 仍在
 2) mcs preflight --page --cards [--video]   → 装齐本次要用的依赖
-3) /humanizer-zh 过稿（改动清单给用户）      → 事实/立场不动
-4) guizang-page-skill：article.md + annotations.json + `mcs page`
+3) /humanizer-zh 过稿（先存 article.orig.md，给一段简短说明）→ 事实/立场不动
+4) guizang-page-skill：article.md（已去 AI 味）+ annotations.json + `mcs page`
 5) guizang-social-card-skill：seed 模板 + `mcs cards` + 校验
 6) 视频（可选）：create_project → import → scaffold-video.py → tts.py → complete/export
 7) 验收：checklist.md + `mcs verify`（有视频时）+ present + library_add

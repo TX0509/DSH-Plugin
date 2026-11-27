@@ -285,3 +285,14 @@ node --check client.js
 - ❌ `require('@deepseek-ai/dsh-client-ui-primitives')` 或重复打包 React。
 - ❌ 为了插件方便，在 Host 侧开放任意路径读写或 shell 执行。
 - ❌ 把个人 profile 路径、`package.json.bak-*`、密钥提交进仓库。
+
+## 13. 内容创作工作流：先去 AI 味，再排版
+
+创作网页内容（长文页、文章排版页、专题页、文档页）时，默认顺序是 `humanizer-zh` → `guizang-page-skill`。
+
+**细节以用户全局约定 `$DSH_HOME/AGENTS.md`（默认 `~/.dsh/AGENTS.md`）为准**，它对任何目录下的会话生效，本仓库会话同样适用；不要在这里再写一套，两份各写一套必然漂移。
+
+本仓库特有的两条：
+
+- 改这条规则时，仓库这里与全局那份要一起改。
+- 改 skill 文档时同步 `dsh-multichannel-story/assets/multichannel-story/` 副本，并重算清单：`node scripts/sync-assets.mjs --manifest-only`。

@@ -17,7 +17,8 @@ metadata:
 
 ```
 <项目目录>/
-  article.md  annotations.json  <标题>.html  <标题>.pdf  <标题>-长图.png
+  article.md  article.orig.md  annotations.json  <标题>.html  <标题>.pdf  <标题>-长图.png
+  （article.orig.md 是去 AI 味前的原始稿，留底供 diff / 回滚；只在项目目录里，不属于交付物）
   assets/figs/…                  ← 页面与卡片共用素材
   cards/index.html  cards/output/xhs-01-cover.png …  wechat-21x9.png  wechat-1x1.png
   video/index.html  video/compositions/s1…sN.html  video/audio/vo.mp3
@@ -27,7 +28,7 @@ metadata:
 
 ## 先选路径：对齐「歸藏设计」插件的 6 个工作流
 
-插件自带 6 条内容工作流（一篇文章三种出口 / 先去 AI 味再排版 / 演讲回收 / 品牌套件 / 封面矩阵 / 中英双版本）。**不重复实现它们**，而是运行时读定义、按产物选一条、按它的 steps 执行，本 skill 只补插件之外的环节（自检、素材、配音、视频、验收）。
+插件自带 6 条内容工作流（一篇文章三种出口 / 先去 AI 味再排版 / 演讲回收 / 品牌套件 / 封面矩阵 / 中英双版本）。**不重复实现它们**，而是运行时读定义、按产物选一条、按它的 steps 执行，本 skill 只补插件之外的环节（自检、素材、配音、视频、验收）。其中「先去 AI 味再排版」（`humanize-then-typeset`）是**网页产物的默认路径**，不是可选项。
 
 ```bash
 node "<base>/scripts/list-recipes.mjs"          # 看当前装了哪些工作流（会随插件版本变）
@@ -42,8 +43,8 @@ node "<base>/scripts/list-recipes.mjs" --json   # id / title / steps / prompt
 | 网页 + 小红书 + 公众号 | `one-article-three-outputs`（本 skill 主链路） |
 | 以上 + 抖音视频 | 同上，再叠加本 skill 第 5 步（视频与配音） |
 | 只要封面（21:9 / 1:1 / 3:4） | `cover-matrix` |
-| 只要网页 / 只要 3:4 组图 | 直接用 `guizang-page-skill` / `guizang-social-card-skill` |
-| 先改文风再排版 | `humanize-then-typeset`（改动清单先给用户确认） |
+| 只要网页 | **`humanize-then-typeset`** 是默认：先 `humanizer-zh` 过稿，再 `guizang-page-skill`；用户明确说不要改文案才直接排版 |
+| 只要 3:4 组图 | `guizang-social-card-skill` 直接做；文案沿用同一份去 AI 味后的文本，即使这次没有网页阶段也要先过一遍 |
 | PPT/讲稿成文 | `talk-to-article` |
 | 有品牌色 | `brand-kit`（品牌主题贯穿网页/卡片/视频） |
 | 中英两版 | `bilingual` |
@@ -96,7 +97,7 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 | 网页长文 | 歸藏设计插件（guizang-page-skill）、node |
 | 小红书 / 公众号封面 | 歸藏设计插件（guizang-social-card-skill）、playwright（插件自带） |
 | 抖音视频 | OpenMotion（MCP 工具 + 本机 Studio）、ffmpeg/ffprobe、python `edge-tts`（python 只有视频链路需要；`--page --cards` 缺 python 不算 MISSING） |
-| 第二步去 AI 味 | 歸藏设计插件（humanizer-zh）；缺了只影响文案，不阻塞渲染 |
+| 第二步去 AI 味 | 歸藏设计插件（humanizer-zh）；缺了就**先说明这一步做不了**，再问用户是否照排，不要静默跳过 |
 | 真实素材/推文截图 | ego-browser（skill + CLI） |
 | 免费图库配图 | dsh-stock-images |
 | 需要生成配图 | dsh-image-gen（非必要不生成） |
@@ -106,7 +107,7 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 用 `ask_user_question` 一口气问完，不要分批打断：
 
 1. **要哪些产物**（多选）：网页长文 / 小红书图文 / 公众号封面（21:9+1:1）/ 抖音竖屏短视频。默认给出「网页 + 小红书 + 公众号」。
-   同时说明可选的工作流路径（一篇文章三种出口 / 先去 AI 味再排版 / 封面矩阵 / 品牌套件 / 中英双版本 / 演讲回收），用户点名哪条就按哪条的 steps 走。
+   默认就走「先去 AI 味再排版」（`humanize-then-typeset`），不用征询；提问时顺带说一句「默认先过一遍文案再排版」，除非用户已经说过不要改文案。其余可选工作流：一篇文章三种出口 / 封面矩阵 / 品牌套件 / 中英双版本 / 演讲回收，用户点名哪条就按哪条的 steps 走。
 2. **视频音色**（选了视频才问）：把 `references/voice.md` 的音色表列出来让用户选 —— 云健（成熟男声·纪实，默认）/ 云扬（新闻男声·稳）/ 云希（年轻男声·轻快）/ 云夏（少年音）/ 自带录音。同时问一句是否要配乐（默认只做旁白）。
 3. **素材口径**：用户自己有图 / 允许抓公开素材（ego-browser + 图库）/ 允许 AI 生成（非必要不生成）。
 4. **风格与配色**（不预设，必须让用户选）：两段问，先风格再配色。
@@ -121,17 +122,17 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 
 顺带确认：是否需要中文译文（外文素材/推文默认译成中文）、发布平台规格。
 
-## 第二步：事实与文案
+## 第二步：事实与文案（先过 `humanizer-zh`，默认不跳过）
 
 - 数字、日期、引文、归属必须来自用户材料；不要补造。外部新闻类素材先用 `web_search` / ego-browser 核实再写。
-- 所有要署用户名字的正文与卡片文案，**过一遍 `humanizer-zh`**（"去除 AI 味"）：删空泛抬高（堪称/彰显/惊天反转/一针见血）、删伪洞察、删无信息的评价词，保留事实、判断、语气和标题。原文是用户自己写的，只改空话，不改立场。
+- 所有要署用户名字的正文与卡片文案，**先加载 `humanizer-zh`**（"去除 AI 味"，这是默认第一步）：删空泛抬高（堪称/彰显/惊天反转/一针见血）、删伪洞察、删无信息的评价词，保留事实、判断、语气和标题。原文是用户自己写的，只改空话，不改立场。改写只落在 `article.md` 上，动手前先把未改动的原文另存为 `article.orig.md`。改完给用户一段**简短说明**（改了哪几类、删了什么），不要附逐条命中清单；用户明确说「不要改文案」才略过。
 - 用户明确过的文案偏好见 `references/copy-and-images.md`（不要模糊配图、外文推文做中文译文卡、成图上不要尺寸/比例标注、页面不要工具品牌页脚）。
 
 ## 第三步：网页长文（guizang-page-skill）
 
 按 `references/page.md` 执行，核心是「模型写 annotations，脚本确定性渲染」：
 
-1. 原文原样落到 `article.md`（可拆段、可加图表块，不删内容）。
+1. `article.md` 已是去 AI 味后的正文（原始稿 `article.orig.md` 在第二步留好，不要覆盖它）；落盘只做分段与图表块，不删内容。
 2. 用脚本按锚点文字算行号生成 `annotations.json`（不要手工数行号）。
 3. `mcs page <项目目录> --out <标题>.html [--style magazine|swiss] [--theme <主题 id>] [--brand "#76B900"] [--cap-fig "文件名:660:840"]` 渲染 + 注入两条必要后处理：竖幅人像按栏宽收窄、删除页脚 `归藏 Page · Built with constrained HTML`。两条都会核对是否真的生效（页脚还在、或没有 `</head>` 插不进 CSS 就直接失败）。
    `--out` 的安全规则：必须是项目目录内的 `.html`、不能指向 `article.md` / `annotations.json`、不能是符号链接、已存在的文件默认拒绝（确认覆盖项目内普通文件才加 `--force`）；`--cap-fig` 的文件名不能含 `<`、`>`、控制字符或换行。

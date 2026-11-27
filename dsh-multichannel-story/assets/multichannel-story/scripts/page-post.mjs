@@ -20,9 +20,33 @@ const TOOL_FOOTER_MARKERS = [
   '歸藏 Page · Built with constrained HTML',
 ]
 
-/** CSS 属性选择器里的双引号与反斜杠必须转义，否则文件名会把规则截断。 */
-function escapeAttribute(value) {
-  return String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+/** 竖图文件名里绝不该出现的字符：尖括号会被当成 HTML/CSS 结构，控制字符/换行会截断规则。 */
+const INVALID_FIGURE_NAME = /[\u0000-\u001F\u007F<>]/u
+
+/**
+ * 转义 CSS 属性选择器里的值（防御性）：反斜杠与双引号转义；`<` / `>` 用 CSS 十六进制转义
+ * （`\3c ` / `\3e `）后再拼进选择器；CR/LF 直接剥离，避免把一条规则拆成两行。
+ * 正常情况下 postProcessPage 会先用 assertFigureName 挡住非法名字，这里是最后一道保险。
+ * 导出是为了单测能直接验证这层转义。
+ */
+export function escapeAttribute(value) {
+  return String(value)
+    .replace(/[\r\n]+/gu, '')
+    .replace(/[\u0000-\u001F\u007F]/gu, '')
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('<', '\\3c ')
+    .replaceAll('>', '\\3e ')
+}
+
+/** 竖图文件名必须是安全的普通文本；非法时抛错（保持纯函数，不打印、不静默降级）。 */
+function assertFigureName(name) {
+  if (typeof name !== 'string' || name.trim() === '') {
+    throw new TypeError('postProcessPage 的 figureCaps[].name 必须是非空字符串')
+  }
+  if (INVALID_FIGURE_NAME.test(name)) {
+    throw new TypeError(`postProcessPage 的 figureCaps[].name 含非法字符（<、>、控制字符或换行）：${JSON.stringify(name)}`)
+  }
 }
 
 /**
@@ -53,9 +77,14 @@ export function postProcessPage(html, figureCaps = []) {
   if (figureCaps.length > 0 && next.includes('</head>')) {
     const rules = []
     for (const cap of figureCaps) {
-      const attribute = escapeAttribute(cap?.name ?? '')
+      const name = cap?.name ?? ''
+      assertFigureName(name)
       const width = String(cap?.width ?? '').trim()
       const height = String(cap?.height ?? '').trim()
+      if (!/^\d+$/u.test(width) || !/^\d+$/u.test(height)) {
+        throw new TypeError(`postProcessPage 的 figureCaps[].width/height 必须是像素数（收到：${width}x${height}）`)
+      }
+      const attribute = escapeAttribute(name)
       rules.push(`.section > .figure-card:has(img[src*="${attribute}"]){max-width:${width}px;margin-left:auto;margin-right:auto}`)
       rules.push(`.section > .figure-card:has(img[src*="${attribute}"]) img{width:100%;height:${height}px;object-fit:cover;object-position:center 18%}`)
     }

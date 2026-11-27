@@ -44,7 +44,25 @@ python3 "<base>/scripts/tts.py" spec.json --out vo.mp3    # macOS / Linux
 #             "segments":[{"id":"s1","start":0.15,"text":"…"}, …]}
 ```
 
-脚本做四件事：逐句生成 → ffprobe 实测时长 → 检查相邻句是否重叠（重叠会报错提示改词或挪点）→ `adelay`+`amix`+`loudnorm`+`apad` 混成一条与视频等长的音轨。
+```jsonc
+{
+  "voice": "zh-CN-YunjianNeural",   // 音色 id
+  "rate": "+8%",                     // 语速
+  "pitch": "-1Hz",                   // 音调
+  "total_duration": 40.5,            // 必填且 > 0：混音按它补齐，并校验输出长度
+  "min_gap": 0.2,                    // 相邻句最小停顿（秒），默认 0.2
+  "loudness": {"I": -16, "TP": -1.5},// 可选；I 必须在 -70~-5，TP 在 -9~0
+  "segments": [{"id": "s1", "start": 0.15, "text": "…"}]
+}
+```
+
+脚本做的事：入口一次性校验 spec（`id` 白名单 `/^[A-Za-z0-9_-]{1,64}$/` 且唯一、`text` 非空、`start` 是 ≥0 的数、`total_duration` 必填、响度区间）→ 逐句生成（单句最多重试 2 次，退避 0.5s/1s）→ ffprobe 实测时长 → 检查相邻句是否重叠或间隔不足 → `adelay`+`amix`+`loudnorm`+`apad` 混成一条与视频等长的音轨 → 校验输出时长与 `total_duration` 偏差 ≤0.15s、打印整轨 LUFS 与真峰（不达标只警告，不假装通过）。
+
+- `spec` 里任何一条不合法都会在开始合成前退出（不会先花完 TTS 请求再失败）；报错会写明第几句 / 哪个字段。
+- `--out` 已有同名文件时默认拒绝，确认覆盖加 `--force`；输出先写临时文件再原子替换。
+- `--workdir DIR` 指定临时目录（不存在会自动建；调试时配合 `KEEP_TTS_TMP=1` 保留逐句 mp3）。
+- 同时写出 `<out>.json`（每句实测时长与落点、整轨时长），审片与 `mcs verify --expect-cues` 都用它。
+- 结尾 0.5s 淡出由视频根合成的 `<audio data-fade-out>` 实现（OpenMotion 渲染时生效），不在 mp3 上做 afade。
 
 **为什么逐句生成**：整段合成会按自己节奏朗读，和分镜对不上；逐句生成后按场次起点延时，才能让每句话踩在对应画面上。
 

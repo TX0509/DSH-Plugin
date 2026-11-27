@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "Multichannel content pipeline",
-    "description": "Turns one article into a long-form web page, a Xiaohongshu card set and a WeChat cover pair, optionally plus a vertical Douyin video. The skill appears in every Session and a “Multichannel” entry appears in the left sidebar (can be turned off in the plugin configuration); it opens a new Session with a /multichannel-story draft and the skill self-checks dependencies first.",
+    "title": "Content Workbench",
+    "description": "Turns one article into a long-form web page, a Xiaohongshu card set and a WeChat cover pair, optionally plus a vertical Douyin video. The skill appears in every Session and a “Content Workbench” entry appears in the left sidebar (can be turned off in the plugin configuration); it opens a new Session with a draft instruction that names the multichannel-story skill, and the skill self-checks dependencies first.",
     "detail": "docs/DETAIL.md"
   }
 }

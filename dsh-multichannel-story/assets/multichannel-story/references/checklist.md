@@ -31,7 +31,7 @@
 - [ ] 第 0 帧是钩子，不是黑屏。
 - [ ] 文字全部在 168–1330px 安全区，底部 590px 只有装饰。
 - [ ] `mcs check <工程目录>` 0 error；`complete_generation` 通过。
-- [ ] `mcs verify <mp4>`：时长吻合、无削波、语句落点对齐。
+- [ ] `mcs verify <mp4> --expect-dur <秒> --expect-cues scenes.json`：时长吻合、积分响度/真峰达标、语句落点对齐（不给 `--expect-cues` 时要明确知道「语句落点未校验」）。
 - [ ] 从成品抽帧核对过画面（不是看工程截图）。
 - [ ] 发布文案（标题/正文/话题/合规提示）一并交付。
 

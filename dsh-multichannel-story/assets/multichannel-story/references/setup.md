@@ -23,11 +23,12 @@ node "<base>/scripts/mcs.mjs" preflight --page --cards --images  # 还要抓截�
 | 品牌主题 | `node <base>/scripts/mcs.mjs brand …` | `bash <base>/scripts/brand-theme.sh …` |
 | 视频工程校验 | `node <base>/scripts/mcs.mjs check <工程目录>` | 同左 |
 | 成片核查 | `node <base>/scripts/mcs.mjs verify …` | `bash <base>/scripts/verify-av.sh …` |
-| python | `py -3` 或 `python`（自检会自动挑） | `python3` |
-| OpenMotion 安装目录 | `%LOCALAPPDATA%\openmotion` | `~/openmotion` |
+| python（仅视频链路） | `py -3` 或 `python`（自检会自动挑） | `python3` |
+| OpenMotion CLI | `%LOCALAPPDATA%\openmotion\node_modules\hyperframes\bin\hyperframes.mjs` | `~/openmotion/node_modules/hyperframes/bin/hyperframes.mjs` |
 | edge-tts | `py -3 -m pip install edge-tts` | `python3 -m pip install edge-tts` |
 | ffmpeg | `winget install Gyan.FFmpeg` | `brew install ffmpeg` |
 
+python 只有视频链路（TTS / 视频骨架）需要：`--page --cards` 缺 python 只提示、不算 MISSING。
 python 脚本（`tts.py` / `scaffold-video.py`）本身跨平台，Windows 上用 `py -3 <base>/scripts/tts.py …` 调用。
 `Pillow` 是可选项（图片裁切/接触表，ffmpeg 也能替代）：缺了自检只提示，不算失败。
 
@@ -66,10 +67,16 @@ ls -d ~/.dsh/profiles/*/node_modules/dsh-guizang-design/skills/guizang-{page,soc
 openmotion_get_project()   # 返回 dataDirectory 和项目列表 = 连接可用
 ```
 
-连接信息（本机已装好时）：**以 OpenMotion 的 `install.json` 为准，不要记死路径**
-- 安装清单：macOS `~/openmotion/install.json`、Windows `%LOCALAPPDATA%\openmotion\install.json`，里面有 `appRoot`（Studio 应用目录）、`dataDirectory`、`launcher`（MCP 启动脚本）。
-- `mcs check <工程目录>` 就是靠它找到 `appRoot` 下的 hyperframes CLI；MCP 连接状态仍只能靠对话里的 `openmotion_get_project()`。
-- 别照抄网上的固定路径（例如 `~/openmotion/integrations/dsh/...`）：不同安装方式/版本布局会变，`install.json` 才是实际的。
+hyperframes CLI 的定位（`mcs check` / `preflight --video` 用同一套发现逻辑，按优先级）：
+1. `HYPERFRAMES_CLI` 环境变量（显式覆盖；指错会直接报错，不会静默换一个安装）；
+2. 旧版安装清单 `install.json` 的 `appRoot`（macOS `~/openmotion/install.json`、Windows `%LOCALAPPDATA%\openmotion\install.json`）；
+3. 新版把安装信息记进 `$DSH_HOME/profiles/<profile>/openmotion-onboarding.json`（`applicationRoot` / `dataDirectory`）；
+4. 已知安装根目录下直接探测 `<root>/node_modules/hyperframes/bin/hyperframes.mjs`（`~/openmotion`、`%LOCALAPPDATA%\openmotion` 等）。
+
+- 找到时 `mcs check` 会打印「CLI：…（来源：…）」；找不到时会把尝试过的位置全部列出来。
+- `mcs preflight --video` 现在直接检查 CLI 是否存在，不会再出现「自检全绿、check 必挂」。
+- MCP 连接状态仍只能靠对话里的 `openmotion_get_project()`。
+- 别照抄网上的固定路径（例如 `~/openmotion/integrations/dsh/...`）：不同安装方式/版本布局会变，以上发现顺序才是实际的。
 
 注意：
 - **Studio 网址不是 HTTP MCP 端点**，不能用 curl 代替 MCP 调用。
@@ -119,12 +126,12 @@ plugin_manager(action="install_bundle", target="dsh-stock-images")
 | 依赖 | 用途 | 检查命令 |
 | --- | --- | --- |
 | node ≥ 20 | 所有脚本（mcs.mjs / render.mjs） | `node -v` |
-| playwright chromium（插件内） | 卡片截图 | `node "<base>/scripts/mcs.mjs" preflight --cards`（会报 chromium 目录） |
-| python（≥3.9） | TTS / 视频骨架 | `py -3 -V`（Windows）/ `python3 -V` |
+| playwright chromium（插件内） | 卡片截图 | `node "<base>/scripts/mcs.mjs" preflight --cards`（会按平台报 chromium 目录：macOS `~/Library/Caches/ms-playwright`、Linux `~/.cache/ms-playwright`、Windows `%LOCALAPPDATA%\ms-playwright`；也尊重 `PLAYWRIGHT_BROWSERS_PATH`） |
+| python（≥3.9，仅视频） | TTS / 视频骨架 | `py -3 -V`（Windows）/ `python3 -V`；`--page --cards` 不需要 |
 | Pillow（可选） | 图片裁切/接触表 | `py -3 -c "import PIL; print(PIL.__version__)"` |
 | ffmpeg/ffprobe | 混音、核查 | `ffmpeg -version` |
 | edge-tts | 旁白 | `py -3 -c "import edge_tts"` |
-| openmotion | 视频工程/导出/本地校验 | `openmotion_get_project()` 调通；`mcs check <工程目录>` 能跑 |
+| openmotion | 视频工程/导出/本地校验 | `openmotion_get_project()` 调通；`mcs check <工程目录>` 能跑（会打印 CLI 来源） |
 
 ## 8. 关于 `scripts/install.sh`
 

@@ -95,7 +95,8 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 | --- | --- |
 | 网页长文 | 歸藏设计插件（guizang-page-skill）、node |
 | 小红书 / 公众号封面 | 歸藏设计插件（guizang-social-card-skill）、playwright（插件自带） |
-| 抖音视频 | OpenMotion（MCP 工具 + 本机 Studio）、ffmpeg/ffprobe、python `edge-tts` |
+| 抖音视频 | OpenMotion（MCP 工具 + 本机 Studio）、ffmpeg/ffprobe、python `edge-tts`（python 只有视频链路需要；`--page --cards` 缺 python 不算 MISSING） |
+| 第二步去 AI 味 | 歸藏设计插件（humanizer-zh）；缺了只影响文案，不阻塞渲染 |
 | 真实素材/推文截图 | ego-browser（skill + CLI） |
 | 免费图库配图 | dsh-stock-images |
 | 需要生成配图 | dsh-image-gen（非必要不生成） |
@@ -123,12 +124,15 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 
 1. 原文原样落到 `article.md`（可拆段、可加图表块，不删内容）。
 2. 用脚本按锚点文字算行号生成 `annotations.json`（不要手工数行号）。
-3. `mcs page <项目目录> --out <标题>.html [--brand "#76B900"] [--cap-fig "文件名:660:840"]` 渲染 + 注入两条必要后处理：竖幅人像按栏宽收窄、删除页脚 `归藏 Page · Built with constrained HTML`。两条都会核对是否真的生效（页脚还在、或没有 `</head>` 插不进 CSS 就直接失败），`--out` 只接受 `.html` 且不能指向 `article.md` / `annotations.json`。
-4. 打开验证（图片加载、目录、移动端 390px），再导出 PDF 与长图（命令末尾会打印 export.mjs 的完整调用）。
+3. `mcs page <项目目录> --out <标题>.html [--brand "#76B900"] [--cap-fig "文件名:660:840"]` 渲染 + 注入两条必要后处理：竖幅人像按栏宽收窄、删除页脚 `归藏 Page · Built with constrained HTML`。两条都会核对是否真的生效（页脚还在、或没有 `</head>` 插不进 CSS 就直接失败）。
+   `--out` 的安全规则：必须是项目目录内的 `.html`、不能指向 `article.md` / `annotations.json`、不能是符号链接、已存在的文件默认拒绝（确认覆盖项目内普通文件才加 `--force`）；`--cap-fig` 的文件名不能含 `<`、`>`、控制字符或换行。
+4. 打开验证（图片加载、目录、移动端 390px），再导出 PDF 与长图。**导出用 `mcs page` 末尾打印的 argv（JSON 数组）按数组执行，不要把它拼成一行 shell 命令**（项目名/文件名里可能有 `$(...)`、反引号或空格）。
 
 ## 第四步：小红书 + 公众号封面（guizang-social-card-skill）
 
-按 `references/cards.md`：拷贝 seed 模板 → 规划 6–9 张 3:4 → `mcs cards <任务目录>` 渲染（无 index.html 时会先放 seed 模板）→ 看 PNG 逐张自检 → `validate-social-deck` 跑到 0 fail。
+按 `references/cards.md`：拷贝 seed 模板 → 规划 6–9 张 3:4 → `mcs cards <任务目录>` 渲染 → 看 PNG 逐张自检 → `validate-social-deck` 跑到 0 fail。
+
+`mcs cards` 的退出码要按事实理解：`0` 才是渲染+校验都过；`3` 表示只拷了 seed 模板、还没渲染（不算交付）；`1` 表示画面上有比例/尺寸标注、`output/` 里没有 PNG、或校验器没跑起来/校验有 FAIL。`--allow-labels` 只在确认标注必须保留时用。
 
 硬性约束：3:4 内容覆盖 ≥75% 画布高度；标题不贴边不撞页脚；中文不斜体；**画面上不写比例与像素尺寸**（不写 `21:9`、`2100×900`、`1:1`），也不产出带尺寸标签的配对预览图。
 
@@ -138,10 +142,11 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 
 1. 先调 `openmotion_get_project()` **验证 MCP 连接**（脚本查不到这一项）：能返回 `dataDirectory` 才算连上；连不上就先修连接，别硬写工程。然后 `openmotion_create_project`（natural_language，requirements 写清规格与声音要求）。
 2. `openmotion_import_assets` 导入图片与（若已有）旁白音频；素材名用中文内容名。
-3. 用 `py -3 <base>/scripts/scaffold-video.py --dir <工程目录> --scenes scenes.json`（macOS/Linux 用 `python3`）生成「根合成 + 每场一个子合成」的骨架（Studio 校验要求子合成，单文件嵌套会被判 error），再逐场改造。
-4. 旁白：按 `references/voice.md` 用 `py -3 <base>/scripts/tts.py spec.json --out vo.mp3` 生成并混音（逐句按场次起点延时，句间留停顿，−16 LUFS / 真峰 −1.5 dB）。
-5. 本地校验：`mcs check <工程目录>` 必须 0 error（它从 OpenMotion 的 `install.json` 找到 hyperframes CLI，不用猜路径；CLI 输出无法解析时按失败退出；Studio 的 lint 比 CLI 更严，CLI 通过不等于能过 `complete_generation`）。然后 `complete_generation` → `open_preview` → `export_request(audio: "required")` → 等完成。
-6. 导出后用 `mcs verify <mp4> --expect-audio required --expect-dur <秒>` 复核：音轨存在、时长、响度、语句落点，并从成品抽帧核对画面。
+3. 先写 `scenes.json` 定分镜（id 唯一、首场 `start=0`、末场不超过总时长）。
+4. 旁白：按 `references/voice.md` 用 `py -3 <base>/scripts/tts.py spec.json --out vo.mp3` 生成并混音（`total_duration` 必填、逐句按场次起点延时、句间 ≥0.2s、−16 LUFS / 真峰 −1.5 dB；单句失败会自动重试，最终失败会指出第几句）→ 导入音频 → 在 `scenes.json` 写 `voice.src`（**工程内相对路径**，绝对路径 / `../` 会被拒绝）。
+5. 用 `py -3 <base>/scripts/scaffold-video.py --dir <工程目录> --scenes scenes.json`（macOS/Linux 用 `python3`）生成「根合成 + 每场一个子合成」的骨架（Studio 校验要求子合成，单文件嵌套会被判 error），再逐场改造。脚本会先全量校验再写文件（失败不留半个工程），`<audio>` 由它写入、不要手写；骨架已存在时重跑要 `--force`。
+6. 本地校验：`mcs check <工程目录>` 必须 0 error。CLI 按 `HYPERFRAMES_CLI` → `install.json` → `$DSH_HOME/profiles/<profile>/openmotion-onboarding.json` → 已知目录 的顺序发现，成功时会打印来源；CLI 输出无法解析时按失败退出；Studio 的 lint 比 CLI 更严，CLI 通过不等于能过 `complete_generation`。然后 `complete_generation` → `open_preview` → `export_request(audio: "required")` → 等完成。
+7. 导出后用 `mcs verify <mp4> --expect-audio required --expect-dur <秒> --expect-cues scenes.json` 复核：分辨率/帧率（29.97 用浮点容差）、时长、音轨、积分响度与真峰（默认 −16 LUFS ±1、真峰 ≤ −1.0 dBTP）、语句落点（容差 0.4s），并从成品抽帧核对画面。**不给 `--expect-cues` 时它只会说「未校验语句落点」**，不要把那当成已核对。
 
 ## 第六步：验收与交付
 
@@ -153,7 +158,7 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 
 - 不要在没做环境自检的情况下开跑，也不要承诺未安装的工具能力。
 - 不要在 Windows / DSH Desktop 上用 `bash` 跑脚本（那是 WSL，路径和 python 环境都不同），统一用 `node <base>/scripts/mcs.mjs <子命令>`。
-- 装了 `dsh-multichannel-story` 插件时不要再跑 `scripts/install.sh`（会往 `~/.agents/skills` 拷一份高优先级副本，顶掉插件版本）。
+- 装了 `dsh-multichannel-story` 插件时不要再跑手册里的 `scripts/install.sh`（本插件包**不含**它；那个脚本会往 `~/.agents/skills` 拷一份 rank 500 的副本，优先级高于插件的 600，顶掉插件版本）。
 - 不要用静音成片交差（用户已明确：所有视频必须有声音，自然男声，避免机械念稿）。
 - 不要用视频截帧/低分辨率图做大幅配图（原图分辨率应大于显示尺寸）。
 - 不要改动用户文章的立场与事实，只为去空话而编辑。
@@ -177,7 +182,7 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 
 | 脚本 | 用途 |
 | --- | --- |
-| `scripts/mcs.mjs` | 跨平台命令行（`preflight` / `page` / `cards` / `brand` / `check` / `verify`），几个 `.sh` 都转发到这里 |
+| `scripts/mcs.mjs` | 跨平台命令行（`preflight` / `page` / `cards` / `brand` / `check` / `verify`），几个 `.sh` 都转发到这里；各子命令 `--help` 列全部参数 |
 | `scripts/page-post.mjs` | 网页后处理（删工具页脚、收窄竖图），由 `mcs page` 调用；纯函数，单独可测 |
 | `scripts/preflight.sh` | 环境自检（按需检查） |
 | `scripts/list-recipes.mjs` | 读插件当前的工作流列表（运行时，不硬编码） |
@@ -186,4 +191,4 @@ python 脚本（`tts.py`、`scaffold-video.py`）跨平台用：Windows 上写 `
 | `scripts/build-cards.sh` | 渲染卡片 + 跑校验 |
 | `scripts/tts.py` | 多句 TTS + 延时混音成一条音轨 |
 | `scripts/scaffold-video.py` | 生成「根合成 + 子合成」视频骨架 |
-| `scripts/verify-av.sh` | 成片音轨/画幅/响度/语句落点复核 |
+| `scripts/verify-av.sh` | 成片音轨/画幅/响度/语句落点复核（转发到 `mcs verify`） |

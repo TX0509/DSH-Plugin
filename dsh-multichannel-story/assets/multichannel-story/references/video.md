@@ -14,15 +14,18 @@
 3. `openmotion_get_project({projectId})` → 读 `directory`、`revision`、`currentVersionId`、`assets/` 现状。
 4. 有品牌色时先取 token：`node "<base>/scripts/mcs.mjs" brand "#76B900" --tokens` → 写进 scenes.json 的 `theme`；照片压暗会自动用主题墨色。
 5. `openmotion_import_assets({projectId, requestId, items:[{itemId, name, sourcePath}]})` → 图片/音频逐个导入，用返回的 `assets/imported/…` 路径。中文名用「内容 + 用途」。
-6. **搭结构**：`py -3 "<base>/scripts/scaffold-video.py" --dir <工程目录> --scenes scenes.json`（macOS/Linux 用 `python3`；场景模板见下面「工程结构」）。骨架已存在时重跑会被拒绝，确认要覆盖逐场手改就加 `--force`（它同时保护 `index.html` 与 `compositions/sN.html`）；`scenes.json` 里写了 `voice.src` 但文件不存在时直接失败，先导入音频再加。
-7. 本地校验：`node "<base>/scripts/mcs.mjs" check <工程目录>`（从 OpenMotion 的 `install.json` 找 hyperframes CLI，跑 lint/布局/动效/对比度；CLI 输出无法解析时按失败退出，`scaffold-video.py --check` 也是转发到这一条。**Studio 的 lint 比 CLI 严**，CLI 通过不代表能过 `complete_generation`）。
-8. 旁白：`py -3 "<base>/scripts/tts.py" spec.json --out vo.mp3` → `import_assets` → 在根合成加 `<audio>`。
-9. `openmotion_open_preview({action:"begin", mode:"create"|"modify"})` → 拿 `workId`。
-10. 若第 9 步之后没有内容变化，`complete_generation` 会报 `GENERATION_CONTENT_UNCHANGED`：**先 begin 再改最后一处内容**，或 begin 后补一个小改动（例如给音频加 `data-fade-out`）。
-11. `openmotion_open_preview({action:"complete_generation", workId, expectedRevision, expectedVersionId})`
-12. `openmotion_open_preview({action:"open", expectedRevision, expectedVersionId})` → 返回 `previewUrl`。
-13. `openmotion_export_request({projectId, requestId, versionId, expectedRevision, audio:"required"})` → 用 `openmotion_get_project({exportJobId})` 轮询到 `completed` 且 `verification.status=passed`。
-14. `node "<base>/scripts/mcs.mjs" verify <mp4> --expect-audio required --expect-dur <秒>`，再从成品抽帧核对画面。
+6. **写 `scenes.json`**：场景 id、`start`、`duration`、文案、`photo`/`photoPos`（模板见下面「工程结构」）。先定分镜起点，后面旁白按这些起点对齐。
+7. **旁白（要视频就必做）**：写 TTS `spec.json`（`total_duration` 必填，取最终视频时长）→ `py -3 "<base>/scripts/tts.py" spec.json --out vo.mp3`（macOS/Linux 用 `python3`）→ `openmotion_import_assets` 导入 → 把 `voice.src` 写成**工程内相对路径**（例如 `assets/imported/vo.mp3`；绝对路径或 `../` 会被拒绝）→ 在 `scenes.json` 里加 `voice: {"src": "assets/imported/vo.mp3", "fadeOut": 0.5}`。
+8. **搭结构**：`py -3 "<base>/scripts/scaffold-video.py" --dir <工程目录> --scenes scenes.json`。脚本会**先全量校验**（id 唯一、首场从 0 开始、末场不超时长、旁白存在且时长够）再写文件，失败不会留下半个工程；根合成的 `<audio>` 由它按 `voice.src` 写入，**不要手写**。骨架已存在时重跑会被拒绝，确认要覆盖逐场手改才加 `--force`（同时保护 `index.html` 与 `compositions/sN.html`）。scenes.json 里的文本会 `html.escape` 后写入，不要把 HTML 标签当样式用。
+9. 本地校验：`node "<base>/scripts/mcs.mjs" check <工程目录>`。CLI 定位顺序：`HYPERFRAMES_CLI` → 旧版 `install.json` → `$DSH_HOME/profiles/<profile>/openmotion-onboarding.json` → 已知安装目录直接探测；成功时会打印用的是哪一条。CLI 输出无法解析时按失败退出，`scaffold-video.py --check` 也转发到这一条。**Studio 的 lint 比 CLI 严**，CLI 通过不代表能过 `complete_generation`。
+10. `openmotion_open_preview({action:"begin", mode:"create"|"modify"})` → 拿 `workId`。
+11. 若第 10 步之后没有内容变化，`complete_generation` 会报 `GENERATION_CONTENT_UNCHANGED`：**先 begin 再改最后一处内容**，或 begin 后补一个小改动（例如给音频加 `data-fade-out`）。
+12. `openmotion_open_preview({action:"complete_generation", workId, expectedRevision, expectedVersionId})`
+13. `openmotion_open_preview({action:"open", expectedRevision, expectedVersionId})` → 返回 `previewUrl`。
+14. `openmotion_export_request({projectId, requestId, versionId, expectedRevision, audio:"required"})` → 用 `openmotion_get_project({exportJobId})` 轮询到 `completed` 且 `verification.status=passed`。
+15. `node "<base>/scripts/mcs.mjs" verify <mp4> --expect-audio required --expect-dur <秒> --expect-cues scenes.json`，再从成品抽帧核对画面。
+    - `verify` 会查分辨率/帧率（29.97 这类用浮点容差）/时长/音轨，响度用 loudnorm 两遍法读积分响度与真峰（默认 -16 LUFS ±1、真峰 ≤ -1.0 dBTP），并按 `--expect-cues` 的场次起点核对语句落点（容差 0.4s）。
+    - 不给 `--expect-cues` 时它会明确打印「未校验语句落点」，不会用「全部通过」暗示已经核对过。
 
 ## 工程结构（Studio 要求的形状）
 
@@ -36,6 +39,7 @@
        data-width="1080" data-height="1920"></div>
   …
   <div id="prog" data-hf-id="prog"></div>
+  <!-- 由 scaffold-video.py 按 scenes.json 的 voice 字段写入；不要手写 -->
   <audio id="vo" class="clip" data-start="0" data-duration="40.5"
          data-track-index="2" data-volume="1" data-fade-out="0.5"
          src="assets/imported/<audio-id>.mp3"></audio>
@@ -84,7 +88,7 @@
 | `line_unread` | 一行停留时间 < 0.5+0.3×词数 | 延长该行停留、缩短文案，或提前入场 |
 | `dead_stretch` | 3 秒以上画面无变化 | 尾部加缓慢缩放/位移，或给元素 `data-hold` |
 | `first_frame_empty` | 第 0 帧只有背景（社交平台缩略图和钩子都靠它） | 首场标题/主视觉直接在 0 秒可见，不要从 opacity:0 入场 |
-| `film_silent` | 没有音轨 | 加 `<audio>`（本 skill 要求必须有声） |
+| `film_silent` | 没有音轨 | 在 `scenes.json` 写 `voice.src`（工程内相对路径）后重跑 `scaffold-video.py`，由它写 `<audio>`；不要手写 |
 | `duplicate_media_discovery_risk` | 同一素材两处出现 | 裁一份不同用途的图（如「全年日线」与「11 月跌段」） |
 | 字体不生效 / lint 报 font-face | 用了非内置字体且没声明 | `@font-face` + `src: local('系统字体名')`；中文用 `Songti SC` / `Heiti SC` |
 

@@ -22,79 +22,38 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'multichannel-story'
     const PREF_KEY = 'dsh-multichannel-story:sidebar-entry'
     const ENTRY_ORDER = 7
-    const START_PROMPT = '/multichannel-story '
+
+    /**
+     * 写进草稿的指令前缀：刻意用自然语言点名技能，而不是斜杠命令。
+     *
+     * 宿主的提交机只在整段草稿以 `/` 开头时才把它当命令裁决
+     * （`dsh-client-ui-conversation` 的 input machine）；而 `startSession` 会复用
+     * 「空白会话」的未发送草稿——用户可能已经在里面写了字，此时追加的文本不在开头，
+     * 斜杠命令就退化成普通消息、技能不会被调用。自然语言点名在两种情况下都成立。
+     */
+    const START_PREFIX = {
+      zh: '用 multichannel-story 技能，',
+      en: 'Use the multichannel-story skill. ',
+    }
 
     /**
      * 文案：每个叶子都是 {zh, en}，由宿主 locale 服务按回退链解析
      * （不支持的界面语言回退英文，而不是中文）。数组保持同样形状。
      */
     const COPY = {
-      sidebar: { zh: '多平台内容', en: 'Multichannel' },
-      kicker: { zh: 'Multichannel · 一条内容，四种出口', en: 'Multichannel · one piece, four outlets' },
-      title: { zh: '多平台内容流水线', en: 'Multichannel content pipeline' },
-      lede: {
-        zh: '一篇文章进去：精排网页长文、小红书图文、公众号封面一次成型；需要时再加一条带自然男声旁白的抖音竖屏视频。顺序、排版与验收标准都在技能里，你只补内容。',
-        en: 'One article in: a long-form page, a Xiaohongshu card set and a WeChat cover pair come out together — plus an optional vertical Douyin video with a natural male voice-over. Order, layout and acceptance rules live in the skill.',
-      },
+      sidebar: { zh: '内容工作台', en: 'Content Workbench' },
+      title: { zh: '内容工作台', en: 'Content Workbench' },
       tabsLabel: { zh: '工作台视图', en: 'Workbench views' },
       tabStart: { zh: '开始', en: 'Start' },
       tabSettings: { zh: '设置', en: 'Settings' },
 
       pickTitle: { zh: '这次要做什么', en: 'What this run produces' },
-      pickHint: { zh: '选一个起点；音色、素材、风格这些细节，技能开跑后会一次问完。', en: 'Pick a starting point; the skill asks for voice, material and style in one go once it starts.' },
       ctaPrefix: { zh: '开始：', en: 'Start: ' },
       ctaBusy: { zh: '正在打开…', en: 'Opening…' },
-      ctaHint: { zh: '会把提示词写进草稿（复用空白会话或新开一个）；已有草稿时追加在后面，不会自动发送。', en: 'Writes the prompt into the draft (reusing a blank Session or opening one); it is appended after any existing draft and never sent.' },
-      ctaDone: { zh: '已写入草稿。去会话里补上文章或选题，再发送。', en: 'Written to the draft. Add your article or topic in the Session, then send.' },
-      promptSummary: { zh: '查看将写入草稿的提示词', en: 'Show the prompt that will be written' },
-      promptLabel: { zh: '将写入草稿', en: 'Goes into the draft' },
-      customHint: { zh: '还想要封面矩阵、中英双版本，或「先去 AI 味」再排版？直接说需求，技能会按对应工作流走。', en: 'Also want a cover matrix, a bilingual edition, or a de-AI rewrite before typesetting? Just describe it; the skill picks the matching workflow.' },
-
-      tipsTitle: { zh: '开跑前会检查', en: 'Checked before it runs' },
-      tips: [
-        {
-          zh: '环境：node、Python、ffmpeg 与 dsh-guizang-design 插件是否就绪；缺了会停下并说明装什么。',
-          en: 'Environment: node, Python, ffmpeg and the dsh-guizang-design plugin; a missing piece stops the run with an install hint.',
-        },
-        {
-          zh: '声音：视频必须有声，默认云健（成熟男声），可换云扬 / 云希 / 云夏。',
-          en: 'Voice: the video always has sound — Yunjian by default, with Yunyang / Yunxi / Yunxia as alternatives.',
-        },
-        {
-          zh: '口径：不编造数据与引文；只去空话，不改你的立场。',
-          en: 'Ear: no invented data or quotes; only filler is removed, never your position.',
-        },
-      ],
-
-      flowSummary: { zh: '这条内容会怎么走（4 步）', en: 'How one piece travels (4 steps)' },
-      steps: [
-        {
-          n: '01',
-          title: { zh: '定主题与素材', en: 'Theme and material' },
-          desc: { zh: '事实、数字、引文都来自你给的材料；外文素材默认译成中文。', en: 'Facts, numbers and quotes come from your material; foreign sources are translated first.' },
-        },
-        {
-          n: '02',
-          title: { zh: '写网页长文', en: 'Long-form page' },
-          desc: { zh: '模型写标注、脚本确定性渲染；去掉工具页脚，竖图按栏宽收窄。', en: 'The model writes annotations, the script renders; tool footers removed, portraits narrowed.' },
-        },
-        {
-          n: '03',
-          title: { zh: '卡片与封面', en: 'Cards and covers' },
-          desc: { zh: '复用网页的素材与主题；渲染后逐张自检，校验跑到 0 fail。', en: 'Same assets and theme as the page; every PNG is reviewed and the deck validation must pass.' },
-        },
-        {
-          n: '04',
-          title: { zh: '视频与验收', en: 'Video and review' },
-          desc: { zh: '旁白逐句对齐分镜，成片核对音轨、画幅、响度与语句落点。', en: 'Narration is aligned shot by shot, then checked for audio, size, loudness and cue points.' },
-        },
-      ],
-
+      ctaDone: { zh: '已请求写入草稿。去会话里补上文章或选题，再发送（没打开会话时那里会有提示）。', en: 'Asked to write the draft. Add your article or topic in the Session, then send (any failure to open it is reported there).' },
+      tabDescription: { zh: '一条内容做成网页、卡片、封面，可选视频', en: 'One piece → page, cards, covers, optional video' },
       settingsTitle: { zh: '入口与偏好', en: 'Entry and preference' },
-      settingsLede: { zh: '侧栏入口只影响界面，技能始终可用。', en: 'The sidebar entry only affects the UI; the skill always works.' },
       toggle: { zh: '在左侧边栏显示入口', en: 'Show entry in the left sidebar' },
-      toggleNote: { zh: '关掉后侧栏不再显示「多平台内容」；可随时在 设置 → 插件 → 多平台内容流水线 → 配置 重新打开。', en: 'Hides the “Multichannel” entry; re-enable any time in Settings → Plugins → this plugin → configuration.' },
-      storageNote: { zh: '偏好存在本浏览器的 localStorage（一个布尔值），换机器或换浏览器会回到默认显示。', en: 'The preference lives in this browser’s localStorage (one boolean); another machine or browser starts from the default.' },
       configTitle: { zh: '侧边栏入口', en: 'Sidebar entry' },
       configNote: { zh: '这个开关只影响界面入口，不影响 multichannel-story 技能；技能始终可用。', en: 'This only controls the UI entry; the multichannel-story skill stays available either way.' },
       startFailed: { zh: '打开新会话失败：', en: 'Could not open a new Session: ' },
@@ -138,10 +97,10 @@ window.__ModuleLoader__.load({
       },
     ]
 
-    /** 写进草稿的完整提示词：显示与实际写入共用这一份，避免两处各拼一遍。 */
+    /** 写进草稿的完整指令：显示与实际写入共用这一份，避免两处各拼一遍。 */
     function promptFor(presetId, text) {
       const preset = PRESETS.find((item) => item.id === presetId) ?? PRESETS[0]
-      return `${START_PROMPT}${text(preset.prompt)}`
+      return `${text(START_PREFIX)}${text(preset.prompt)}`
     }
 
     // ---------------------------------------------------------------- 样式
@@ -229,36 +188,16 @@ window.__ModuleLoader__.load({
   background: var(--accent);
 }
 
-.mcs-main { flex: 1; min-height: 0; overflow-y: auto; padding: 36px 24px 72px; container-type: inline-size; }
+.mcs-main { flex: 1; min-height: 0; overflow-y: auto; padding: 36px 24px 72px; }
 .mcs-page { max-width: 660px; margin: 0 auto; }
-.mcs-cols { display: flex; flex-direction: column; }
-/* 按「容器」宽度判断，而不是视口：同一个面板也挂在 better-sidebar 的窄标签页里，
-   视口很宽时那里仍会被排成两栏挤爆。容器查询不可用的宿主自动退回单列。 */
-@container (min-width: 1000px) {
-  .mcs-page.mcs-page-wide { max-width: 1000px; }
-  .mcs-page-wide .mcs-cols {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    column-gap: 44px;
-    align-items: start;
-  }
-  .mcs-page-wide .mcs-col-side { position: sticky; top: 8px; }
-  .mcs-page-wide .mcs-col-side .mcs-section { margin-top: 26px; }
-  .mcs-page-wide .mcs-col-side .mcs-details { margin-top: 22px; }
-}
-.mcs-kicker { font-size: 11px; line-height: 18px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink3); }
-.mcs-title { margin: 10px 0 10px; font-family: var(--serif); font-size: 30px; line-height: 42px; font-weight: 300; letter-spacing: -.01em; }
-/* 中文一行约 30–34 字最舒服：用 em 而不是 ch（ch 按西文字宽算，中文会排得过长）。 */
-.mcs-lede { max-width: 34em; color: var(--ink2); font-size: 14px; line-height: 24px; }
-.mcs-caption { margin-top: 6px; color: var(--ink3); font-size: 12px; line-height: 20px; }
+/* 单列页面：标题下方直接是产物预设与主按钮。 */
+.mcs-title { margin: 0 0 10px; font-family: var(--serif); font-size: 30px; line-height: 42px; font-weight: 300; letter-spacing: -.01em; }
 
 .mcs-section { margin-top: 32px; }
-.mcs-section-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
-.mcs-section-head h2 { font-family: var(--serif); font-size: 17px; line-height: 26px; font-weight: 400; }
 
-.mcs-head + .mcs-cols .mcs-col-main > .mcs-section:first-child { margin-top: 24px; }
+.mcs-page > .mcs-section:first-of-type { margin-top: 24px; }
 .mcs-presets { display: flex; flex-direction: column; gap: 8px; }
-.mcs-presets-wrap { margin-top: 12px; }
+.mcs-presets-wrap { margin-top: 0; }
 /* 预设做成竖排单选行：标题/标签一行、说明一行，比三列窄卡好读，也不会让标签压住标题。 */
 .mcs-preset {
   display: grid;
@@ -308,7 +247,6 @@ window.__ModuleLoader__.load({
 }
 .mcs-preset-desc { grid-column: 2 / span 2; grid-row: 2; color: var(--ink2); font-size: 12px; line-height: 19px; }
 
-.mcs-cta-consequence { max-width: 34em; margin-top: 14px; color: var(--ink2); font-size: 13px; line-height: 21px; }
 .mcs-cta-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
 .mcs-cta {
   display: inline-flex;
@@ -329,81 +267,12 @@ window.__ModuleLoader__.load({
 .mcs-cta:active { transform: translateY(1px); }
 .mcs-cta[disabled] { cursor: default; opacity: .72; }
 .mcs-status { margin-top: 12px; color: var(--ink2); font-size: 13px; line-height: 21px; }
-/* 常驻的空 live region 不占位：内容改在已有节点里，读屏才会播报。 */
+/* 常驻的空 live region 不占位：内容改在已有节点里，读屏才会播报。
+   :empty 只管外边距；伪元素照样会生成，所以圆点也要显式隐藏，否则空闲时
+   按钮下面会留一个没意义的小圆点。 */
 .mcs-status:empty { margin-top: 0; }
+.mcs-status:empty::before { display: none; }
 .mcs-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--accent); vertical-align: 2px; }
-
-.mcs-prompt-details { margin-top: 14px; }
-.mcs-prompt-details summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  cursor: pointer;
-  color: var(--ink3);
-  font-size: 12px;
-  list-style: none;
-}
-.mcs-prompt-details summary::-webkit-details-marker { display: none; }
-.mcs-prompt-details summary::after {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg) translateY(-2px);
-  transition: transform .2s var(--ease);
-}
-.mcs-prompt-details[open] summary::after { transform: rotate(-135deg) translateY(-2px); }
-.mcs-prompt {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  margin-top: 8px;
-  padding: 9px 12px;
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-  box-shadow: inset 0 0 0 .5px var(--line);
-  font-size: 12px;
-  line-height: 19px;
-  color: var(--ink2);
-  word-break: break-word;
-}
-.mcs-prompt b { flex: none; font-weight: 500; color: var(--ink3); }
-.mcs-prompt code { font-family: var(--mono); font-size: 12px; }
-
-.mcs-list { display: flex; flex-direction: column; gap: 7px; }
-.mcs-list li { position: relative; max-width: 36em; padding-left: 15px; color: var(--ink2); font-size: 13px; line-height: 21px; }
-.mcs-list li::before { content: ""; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: .65; }
-
-.mcs-details { margin-top: 30px; padding-top: 4px; border-top: .5px solid var(--line); }
-.mcs-details summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  cursor: pointer;
-  color: var(--ink2);
-  font-size: 13px;
-  list-style: none;
-}
-.mcs-details summary::-webkit-details-marker { display: none; }
-.mcs-details summary::after {
-  content: "";
-  margin-left: auto;
-  width: 7px;
-  height: 7px;
-  border-right: 1.5px solid var(--ink3);
-  border-bottom: 1.5px solid var(--ink3);
-  transform: rotate(45deg) translateY(-2px);
-  transition: transform .2s var(--ease);
-}
-.mcs-details[open] summary::after { transform: rotate(-135deg) translateY(-2px); }
-.mcs-steps { display: flex; flex-direction: column; }
-.mcs-step { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 11px 0; border-top: .5px solid var(--line); }
-.mcs-step-n { font-family: var(--serif); font-size: 17px; line-height: 24px; color: var(--ink3); }
-.mcs-step h3 { font-size: 13px; line-height: 21px; font-weight: 500; }
-.mcs-step p { margin-top: 1px; color: var(--ink2); font-size: 12px; line-height: 19px; }
 
 .mcs-card { padding: 18px 20px; border-radius: var(--r-lg); background: var(--card); border: .5px solid var(--line); box-shadow: var(--dsw-elevation-soft, none); }
 .mcs-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -458,10 +327,26 @@ window.__ModuleLoader__.load({
   .mcs-main { padding: 24px 16px 56px; }
   .mcs-title { font-size: 26px; line-height: 36px; }
   .mcs-cta { width: 100%; }
-  .mcs-step { grid-template-columns: 28px 1fr; padding: 11px 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mcs-cta, .mcs-tab, .mcs-preset, .mcs-switch, .mcs-switch::after, .mcs-details summary::after, .mcs-prompt-details summary::after { transition: none; }
+  .mcs-cta, .mcs-tab, .mcs-preset, .mcs-switch, .mcs-switch::after { transition: none; }
+}
+
+/* 桌面窗口 chrome（macOS 红绿灯 / 隐藏标题栏）不占布局高度，主区的入口型页面要自己补
+   顶部安全区，否则品牌行和页签会压在 chrome 下面（框架只发布变量，不替页面留白）。
+   只在 darwin 生效：Windows 的 frame 已经用 padding 让出标题栏高度，再补一次会多一截空白。
+   变量含义见 dsh-client-ui-layout：--dsh-frame-top-clearance 是顶栏占用，
+   --dsh-frame-leading-clearance 是左上角控制区（收起侧栏时才有值）。 */
+html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
+  min-height: calc(56px + var(--dsh-frame-top-clearance, 0px));
+  padding-top: var(--dsh-frame-top-clearance, 0px);
+  padding-left: calc(20px + var(--dsh-frame-leading-clearance, 0px));
+}
+@media (max-width: 720px) {
+  html[data-platform="darwin"] .mcs-host-main .mcs-topbar {
+    min-height: 0;
+    padding: calc(10px + var(--dsh-frame-top-clearance, 0px)) 14px 10px calc(14px + var(--dsh-frame-leading-clearance, 0px));
+  }
 }
 `
 
@@ -561,13 +446,18 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------- 图标
 
     const ICONS = {
-      scatter: ['M4.5 7h6M4.5 12h6M4.5 17h4', 'M4.5 5.2h12v13.6h-12z', 'M17 9h3M17 13h3M17 17h3'],
+      // 工作台：外框 + 顶栏 + 右侧分栏，比原来的「卡片堆」更像一块工作区。
+      workbench: [
+        'M5.8 4.6h12.4a1.6 1.6 0 0 1 1.6 1.6v11.6a1.6 1.6 0 0 1-1.6 1.6H5.8a1.6 1.6 0 0 1-1.6-1.6V6.2a1.6 1.6 0 0 1 1.6-1.6z',
+        'M4.2 9.2h15.6',
+        'M14.4 9.2v9.6',
+      ],
       spark: ['M12 4l1.6 5.4L19 11l-5.4 1.6L12 18l-1.6-5.4L5 11l5.4-1.6z'],
       arrow: ['M5 12h13', 'M13 6l6 6-6 6'],
     }
 
     function Icon({ name, size = 18 }) {
-      const paths = ICONS[name] ?? ICONS.scatter
+      const paths = ICONS[name] ?? ICONS.workbench
       return h('svg', {
         width: size,
         height: size,
@@ -687,82 +577,48 @@ window.__ModuleLoader__.load({
     function StartPage({ preset, onPreset, onStart, error, onRetry, busy, status, baseId, i18n }) {
       const t = i18n.text
       const current = PRESETS.find((item) => item.id === preset) ?? PRESETS[0]
-      const prompt = promptFor(preset, t)
-      const consequenceId = `${baseId}-cta-hint`
-      return h('div', { className: 'mcs-page mcs-page-wide' },
+      return h('div', { className: 'mcs-page' },
         h('header', { className: 'mcs-head' },
-          h('p', { className: 'mcs-kicker' }, t(COPY.kicker)),
-          h('h1', { className: 'mcs-title' }, t(COPY.title)),
-          h('p', { className: 'mcs-lede' }, t(COPY.lede))),
+          h('h1', { className: 'mcs-title' }, t(COPY.title))),
 
-        h('div', { className: 'mcs-cols' },
-          h('div', { className: 'mcs-col-main' },
-            h('section', { className: 'mcs-section' },
-              h('div', { className: 'mcs-section-head' }, h('h2', null, t(COPY.pickTitle))),
-              h('p', { className: 'mcs-caption', id: `${baseId}-pick-hint` }, t(COPY.pickHint)),
-              h('div', { className: 'mcs-presets-wrap' },
-                h(Presets, {
-                  value: preset,
-                  onChange: onPreset,
-                  presets: PRESETS,
-                  text: t,
-                  label: t(COPY.pickTitle),
-                  hintId: `${baseId}-pick-hint`,
-                  baseId,
-                })),
-              // 决定「点下去会发生什么」的一句话放在按钮上方，而不是塞进按钮右边的注释位。
-              h('p', { className: 'mcs-cta-consequence', id: consequenceId }, t(COPY.ctaHint)),
-              h('div', { className: 'mcs-cta-row' },
-                h('button', {
-                  type: 'button',
-                  className: 'mcs-cta',
-                  onClick: onStart,
-                  disabled: busy,
-                  'aria-describedby': consequenceId,
-                },
-                h(Icon, { name: 'spark', size: 16 }),
-                busy ? t(COPY.ctaBusy) : t(COPY.ctaPrefix) + t(current.title))),
-              error === '' ? null : h('p', { className: 'mcs-error', role: 'alert' },
-                h('span', null, error),
-                onRetry === undefined ? null : h('button', {
-                  type: 'button',
-                  className: 'mcs-retry',
-                  onClick: onRetry,
-                  disabled: busy,
-                }, t(COPY.retry))),
-              // 常驻节点：live region 要先在树里，再把文字填进去，读屏才会播报。
-              h('p', { className: 'mcs-status', role: 'status', 'aria-live': 'polite' },
-                status === 'done' ? t(COPY.ctaDone) : null),
-              // 提示词默认收起：平时不需要读 60 字，但写入的内容必须随时可查。
-              h('details', { className: 'mcs-prompt-details' },
-                h('summary', null, t(COPY.promptSummary)),
-                h('p', { className: 'mcs-prompt' },
-                  h('b', null, t(COPY.promptLabel)),
-                  h('code', null, prompt))))),
-
-          h('div', { className: 'mcs-col-side' },
-            h('section', { className: 'mcs-section' },
-              h('div', { className: 'mcs-section-head' }, h('h2', null, t(COPY.tipsTitle))),
-              h('ul', { className: 'mcs-list' }, COPY.tips.map((tip, index) => h('li', { key: index }, t(tip)))),
-              h('p', { className: 'mcs-note' }, t(COPY.customHint))),
-
-            h('details', { className: 'mcs-details' },
-              h('summary', null, t(COPY.flowSummary)),
-              h('ol', { className: 'mcs-steps' },
-                COPY.steps.map((step) => h('li', { key: step.n, className: 'mcs-step' },
-                  h('span', { className: 'mcs-step-n', 'aria-hidden': true }, step.n),
-                  h('div', null,
-                    h('h3', null, t(step.title)),
-                    h('p', null, t(step.desc))))))))))
+        h('section', { className: 'mcs-section' },
+          h('div', { className: 'mcs-presets-wrap' },
+            h(Presets, {
+              value: preset,
+              onChange: onPreset,
+              presets: PRESETS,
+              text: t,
+              // 视觉上不写小节标题，无障碍名仍用 pickTitle。
+              label: t(COPY.pickTitle),
+              baseId,
+            })),
+          h('div', { className: 'mcs-cta-row' },
+            h('button', {
+              type: 'button',
+              className: 'mcs-cta',
+              onClick: onStart,
+              disabled: busy,
+            },
+            h(Icon, { name: 'spark', size: 16 }),
+            busy ? t(COPY.ctaBusy) : t(COPY.ctaPrefix) + t(current.title))),
+          error === '' ? null : h('p', { className: 'mcs-error', role: 'alert' },
+            h('span', null, error),
+            onRetry === undefined ? null : h('button', {
+              type: 'button',
+              className: 'mcs-retry',
+              onClick: onRetry,
+              disabled: busy,
+            }, t(COPY.retry))),
+          // 常驻节点：live region 要先在树里，再把文字填进去，读屏才会播报。
+          h('p', { className: 'mcs-status', role: 'status', 'aria-live': 'polite' },
+            status === 'done' ? t(COPY.ctaDone) : null)))
     }
 
     function SettingsPage({ store, i18n, onEntryChange, baseId }) {
       const t = i18n.text
       const enabled = useSyncExternalStore(store.subscribe, store.get)
-      const noteId = `${baseId}-settings-note`
       return h('div', { className: 'mcs-page' },
         h('h1', { className: 'mcs-title' }, t(COPY.settingsTitle)),
-        h('p', { className: 'mcs-lede' }, t(COPY.settingsLede)),
         h('section', { className: 'mcs-section' },
           h('div', { className: 'mcs-card' },
             h('div', { className: 'mcs-row' },
@@ -771,12 +627,8 @@ window.__ModuleLoader__.load({
                 checked: enabled,
                 label: t(COPY.toggle),
                 labelledBy: `${baseId}-toggle`,
-                describedBy: noteId,
                 onChange: (next) => onEntryChange(next),
-              })),
-            h('p', { className: 'mcs-note', id: noteId }, t(COPY.toggleNote)))),
-        h('section', { className: 'mcs-section' },
-          h('p', { className: 'mcs-caption' }, t(COPY.storageNote))))
+              })))))
     }
 
     // ---------------------------------------------------------------- 工作台外壳
@@ -864,12 +716,12 @@ window.__ModuleLoader__.load({
           { id: 'settings', label: t(COPY.tabSettings) },
         ]
 
-        return h('div', { className: 'mcs-root' },
+        return h('div', { className: `mcs-root ${host === 'main' ? 'mcs-host-main' : 'mcs-host-tab'}` },
           // 不用 <header>/<main>：面板可能和宿主已有的 banner/main 叠加成重复地标。
           // 一个带名字的 region 已经够读屏定位，也不会和宿主抢地标角色。
           h('div', { className: 'mcs-topbar' },
             h('div', { className: 'mcs-brand' },
-              h(Icon, { name: 'scatter' }),
+              h(Icon, { name: 'workbench' }),
               h('span', { className: 'mcs-brand-name' }, t(COPY.sidebar))),
             h(Tabs, { view, onView: setView, items: tabs, label: t(COPY.tabsLabel), baseId })),
           h('div', { className: 'mcs-main', role: 'region', 'aria-label': t(COPY.sidebar) },
@@ -959,7 +811,7 @@ window.__ModuleLoader__.load({
             id: PANEL_ID,
             order: ENTRY_ORDER,
             label: () => i18n.text(COPY.sidebar),
-          }, (props) => h(Icon, { name: 'scatter', size: (props && props.size) || 18 }))
+          }, (props) => h(Icon, { name: 'workbench', size: (props && props.size) || 18 }))
         }
         sync()
         const unsubscribe = store.subscribe(sync)
@@ -986,8 +838,8 @@ window.__ModuleLoader__.load({
           ctx.effect(() => service.registerTab({
             id: `${PACKAGE_NAME}:panel`,
             title: () => i18n.text(COPY.sidebar),
-            description: () => i18n.text(COPY.lede),
-            icon: (size) => h(Icon, { name: 'scatter', size }),
+            description: () => i18n.text(COPY.tabDescription),
+            icon: (size) => h(Icon, { name: 'workbench', size }),
             order: 60,
             single: true,
             component: TabPanel,
@@ -1008,7 +860,7 @@ window.__ModuleLoader__.load({
         PACKAGE_NAME,
         PANEL_ID,
         PREF_KEY,
-        START_PROMPT,
+        START_PREFIX,
         COPY,
         PRESETS,
         ICONS,

@@ -226,7 +226,13 @@ test('模块以包名注册到 __ModuleLoader__，并导出 apply / inject', () 
   assert.equal(loaded.id, 'dsh-multichannel-story')
   assert.equal(typeof module.apply, 'function')
   assert.deepEqual(module.inject, ['slots', 'uiWorkspace'])
-  assert.equal(internals.START_PROMPT, '/multichannel-story ')
+  // 写入草稿的是自然语言指令，不是斜杠命令：追加到已有草稿后面时斜杠会失去命令语义。
+  assert.equal(typeof internals.START_PREFIX.zh, 'string')
+  assert.equal(typeof internals.START_PREFIX.en, 'string')
+  assert.ok(!internals.START_PREFIX.zh.trimStart().startsWith('/'), '草稿指令不能以 / 开头')
+  assert.ok(!internals.START_PREFIX.en.trimStart().startsWith('/'), '草稿指令不能以 / 开头')
+  assert.ok(internals.START_PREFIX.zh.includes('multichannel-story'))
+  assert.ok(internals.START_PREFIX.en.includes('multichannel-story'))
 })
 
 test('每个文案叶子都有中英文，数组条目数一致', () => {
@@ -248,8 +254,8 @@ test('每个文案叶子都有中英文，数组条目数一致', () => {
   }
   walk(internals.COPY, 'COPY')
   for (const preset of internals.PRESETS) walk(preset, `PRESET:${preset.id}`)
-  assert.equal(internals.COPY.steps.length, 4)
-  assert.equal(internals.COPY.tips.length, 3)
+  assert.equal(internals.COPY.steps, undefined, '流程步骤已从界面移除')
+  assert.equal(internals.COPY.tips, undefined, '开跑前检查已从界面移除')
   assert.equal(internals.PRESETS.length, 3)
 })
 
@@ -262,7 +268,12 @@ test('中文文案里不留繁体，预设提示词都以技能名开头', () =>
   }
   const text = (leaf) => leaf.zh
   for (const preset of internals.PRESETS) {
-    assert.ok(internals.promptFor(preset.id, text).startsWith('/multichannel-story '))
+    const prompt = internals.promptFor(preset.id, text)
+    assert.ok(prompt.startsWith(internals.START_PREFIX.zh), '写入的指令要点名技能')
+    assert.ok(prompt.includes('multichannel-story'))
+    // 回归：斜杠命令只在整段草稿以 / 开头时生效；startSession 会复用已有草稿的空白会话，
+    // 追加进去的文本不在开头，所以写入内容必须不是斜杠命令。
+    assert.ok(!prompt.startsWith('/'), '写入草稿的指令不能是斜杠命令')
   }
   assert.equal(internals.promptFor('nope', text), internals.promptFor('deck', text), '未知预设回退第一档')
 })
@@ -341,7 +352,7 @@ test('store 订阅/取消订阅与去重', () => {
 
 // ---------------------------------------------------------------- 开始页
 
-test('开始页：标题、三档预设、主按钮指向当前预设、草稿提示词可查', () => {
+test('开始页：标题、三档预设、主按钮指向当前预设', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   const tree = internals.StartPage({
@@ -357,12 +368,20 @@ test('开始页：标题、三档预设、主按钮指向当前预设、草稿�
   const all = texts(tree)
   for (const expected of [
     internals.COPY.title.zh,
-    internals.COPY.pickTitle.zh,
     internals.PRESETS[1].title.zh,
-    internals.COPY.tipsTitle.zh,
-    internals.COPY.flowSummary.zh,
   ]) {
     assert.ok(all.includes(expected), `开始页应有「${expected}」，实际：${all.join(' | ')}`)
+  }
+  // 回归：导语、kicker、小节标题、CTA 旁注、右侧检查/流程、提示词预览都从页面移除了。
+  for (const className of ['mcs-kicker', 'mcs-cta-consequence', 'mcs-lede', 'mcs-cols', 'mcs-col-side', 'mcs-list', 'mcs-details', 'mcs-prompt-details']) {
+    assert.equal(byClass(tree, className), undefined, `不应再渲染 .${className}`)
+  }
+  for (const removed of [
+    internals.COPY.lede, internals.COPY.kicker, internals.COPY.pickHint, internals.COPY.ctaHint,
+    internals.COPY.tipsTitle, internals.COPY.customHint, internals.COPY.flowSummary,
+    internals.COPY.promptSummary, internals.COPY.promptLabel,
+  ]) {
+    assert.equal(removed, undefined, '被移除的文案键不该残留')
   }
 
   const radios = byRole(tree, 'radio')
@@ -379,17 +398,9 @@ test('开始页：标题、三档预设、主按钮指向当前预设、草稿�
     (cta.children ?? []).some((child) => typeof child === 'string' && child.includes(internals.PRESETS[1].title.zh)),
     '主按钮要写明这次做哪一档',
   )
-  // 「点下去会发生什么」必须可被读屏关联到，且不是按钮右侧的小字。
-  const consequence = byClass(tree, 'mcs-cta-consequence')
-  assert.equal(cta.props['aria-describedby'], consequence.props.id)
-  assert.ok(texts(consequence).includes(internals.COPY.ctaHint.zh))
-
-  // 提示词收在 details 里，默认不占版面，但内容与真实写入一致。
-  const promptDetails = byClass(tree, 'mcs-prompt-details')
-  assert.ok(promptDetails !== undefined)
-  const promptText = flatten(promptDetails).find((element) => element.type === 'code').children[0]
-  assert.equal(promptText, internals.promptFor('video', i18n.text), '显示的提示词要与写入的一致')
-  assert.equal(promptDetails.props['aria-live'], undefined, '提示词不该每次换档都被朗读')
+  // 主按钮不再挂旁注；无障碍名仍由预设分组承担。
+  assert.equal(cta.props['aria-describedby'], undefined)
+  assert.equal(byRole(tree, 'radiogroup')[0].props['aria-label'], internals.COPY.pickTitle.zh)
 
   // 状态播报必须是「常驻节点」：先空着在树里，成功时只改文字，读屏才播报。
   const status = byClass(tree, 'mcs-status')
@@ -399,13 +410,15 @@ test('开始页：标题、三档预设、主按钮指向当前预设、草稿�
   assert.ok(!texts(status).includes(internals.COPY.ctaDone.zh), '空闲时不该已有完成文案')
 })
 
-test('开始页：流程收在可折叠的 details 里，四步都在', () => {
+test('开始页只剩一列：没有右侧检查/流程，也没有提示词预览', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   const tree = internals.StartPage({ preset: 'deck', onPreset: () => {}, onStart: () => {}, error: '', busy: false, status: 'idle', baseId: 'test', i18n })
-  const details = flatten(tree).find((element) => element.type === 'details' && element.props.className === 'mcs-details')
-  assert.ok(details !== undefined, '流程应是可折叠的 details，而不是独立页签')
-  assert.equal(byClassAll(tree, 'mcs-step').length, 4)
+  assert.equal(flatten(tree).filter((element) => element.type === 'details').length, 0, '页面上不再有可折叠块')
+  assert.equal(byClassAll(tree, 'mcs-step').length, 0)
+  assert.equal(byRole(tree, 'list').length, 0, '不再有检查项列表')
+  const page = byClass(tree, 'mcs-page')
+  assert.ok(!page.props.className.includes('mcs-page-wide'), '单列页面不再用宽版布局')
 })
 
 test('开始页：打开会话期间按钮禁用并显示进行中，成功后给出反馈', () => {
@@ -484,7 +497,9 @@ test('预设支持方向键换档（roving tabindex）', () => {
     i18n,
   })
   const group = byRole(tree, 'radiogroup')[0]
-  assert.equal(group.props['aria-describedby'], 'test-pick-hint', 'radiogroup 要关联选择说明')
+  // 说明文字已从界面移除，分组只剩无障碍名（不再有 describedby）。
+  assert.equal(group.props['aria-describedby'], undefined)
+  assert.equal(group.props['aria-label'], internals.COPY.pickTitle.zh)
   group.props.onKeyDown({ key: 'ArrowRight', preventDefault() {} })
   group.props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} })
   assert.deepEqual(picked, ['video', 'page'], '右/左方向键应在三档间循环')
@@ -492,25 +507,27 @@ test('预设支持方向键换档（roving tabindex）', () => {
 
 // ---------------------------------------------------------------- 设置页
 
-test('设置页：一个开关、说明与存储说明', () => {
+test('设置页：只剩标题与一个开关', () => {
   const { ctx } = fakeContext()
   const i18n = internals.createI18n(ctx)
   const store = internals.createStore(true)
   const view = internals.SettingsPage({ store, i18n, onEntryChange: () => {}, baseId: 'test' })
   const all = texts(view)
-  for (const expected of [
-    internals.COPY.settingsTitle.zh,
-    internals.COPY.toggle.zh,
-    internals.COPY.toggleNote.zh,
-    internals.COPY.storageNote.zh,
-  ]) {
+  for (const expected of [internals.COPY.settingsTitle.zh, internals.COPY.toggle.zh]) {
     assert.ok(all.includes(expected), `设置页应有「${expected}」`)
+  }
+  // 回归：导语、开关说明、存储说明都移除了，不再渲染；开关的可访问名仍来自可见文字。
+  for (const className of ['mcs-lede', 'mcs-note', 'mcs-caption']) {
+    assert.equal(byClass(view, className), undefined, `设置页不应再渲染 .${className}`)
+  }
+  for (const removed of [internals.COPY.settingsLede, internals.COPY.toggleNote, internals.COPY.storageNote]) {
+    assert.equal(removed, undefined, '被移除的文案键不该残留')
   }
   const switches = byRole(view, 'switch')
   assert.equal(switches.length, 1)
   assert.equal(switches[0].props['aria-checked'], 'true')
   assert.equal(switches[0].props['aria-labelledby'], 'test-toggle', '开关要用可见文字做名字')
-  assert.equal(switches[0].props['aria-describedby'], 'test-settings-note', '说明 id 要随实例走，避免双面板撞 id')
+  assert.equal(switches[0].props['aria-describedby'], undefined)
 })
 
 test('插件详情页的配置卡片包含开关与说明', () => {
@@ -617,7 +634,7 @@ test('apply 注入三个必需 slot 并安装样式', () => {
   const sidebar = registers.find((entry) => entry.definition.name === 'sidebar.panellist')
   assert.equal(sidebar.definition.id, 'multichannel-story')
   assert.equal(sidebar.definition.order, 7)
-  assert.equal(sidebar.definition.label(), '多平台内容')
+  assert.equal(sidebar.definition.label(), '内容工作台')
   assert.equal(typeof sidebar.component, 'function')
 
   assert.equal(registers.find((entry) => entry.definition.name === 'main').definition.key, 'multichannel-story')
@@ -699,8 +716,8 @@ test('better-sidebar 已装：注册标签页，并在插件卸载时注销', ()
   assert.equal(tab.id, 'dsh-multichannel-story:panel')
   assert.equal(tab.single, true)
   assert.equal(tab.order, 60)
-  assert.equal(tab.title(), '多平台内容')
-  assert.equal(tab.description(), internals.COPY.lede.zh)
+  assert.equal(tab.title(), '内容工作台')
+  assert.equal(tab.description(), internals.COPY.tabDescription.zh)
   assert.equal(typeof tab.component, 'function')
   // 主面板与标签页是两个实例：关入口时只有主面板会切走。
   const main = fake.registers.find((entry) => entry.definition.name === 'main')
@@ -789,6 +806,29 @@ test('client.js 只用主题 token，不写死颜色', () => {
   assert.ok(source.includes('--dsw-radius-') && source.includes('--dsw-elevation-'), '应使用宿主圆角与阴影 token')
   const literals = source.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []
   assert.deepEqual(literals, [], `不应出现字面色值：${literals.join(', ')}`)
+})
+
+test('桌面窗口 chrome 安全区：主区面板用 --dsh-frame-* 留出顶部/左侧空间', () => {
+  const source = readFileSync(CLIENT_FILE, 'utf8')
+  // macOS 的红绿灯/隐藏标题栏不占布局，入口型页面必须自己补顶部留白，
+  // 否则品牌行与页签会压在 chrome 下面（DESIGN.md §2.3 / §4.3）。
+  assert.ok(source.includes("html[data-platform=\"darwin\"] .mcs-host-main .mcs-topbar"), 'darwin 下主区面板要补顶部安全区')
+  assert.ok(source.includes('var(--dsh-frame-top-clearance, 0px)'), '应使用框架发布的顶部 clearance 变量（带兜底）')
+  assert.ok(source.includes('var(--dsh-frame-leading-clearance, 0px)'), '左上角控制区要避让 leading clearance')
+  // Windows 的 frame 已经用 padding 让出标题栏高度，再补一次会多一截空白：只对 darwin 生效。
+  assert.ok(!/html\[data-windows-titlebar\][^{]*\{[^}]*frame-top-clearance/u.test(source), 'Windows 不应重复补顶部留白')
+
+  const fake = fakeContext()
+  const rootOf = (host) => flatten(internals.makePanel({ ctx: fake.ctx, store: internals.createStore(true), i18n: internals.createI18n(fake.ctx), host })())
+    .find((element) => typeof element.props.className === 'string' && element.props.className.startsWith('mcs-root'))
+  assert.ok(rootOf('main').props.className.includes('mcs-host-main'), '主区面板要带 mcs-host-main')
+  assert.ok(rootOf('tab').props.className.includes('mcs-host-tab'), '侧栏标签页不能被当成主区（不该补窗口留白）')
+})
+
+test('空闲状态节点不画装饰圆点（:empty 的伪元素也要隐藏）', () => {
+  const source = readFileSync(CLIENT_FILE, 'utf8')
+  // 常驻 live region 只用来播报；空闲时不该留下一个没有文字的小圆点。
+  assert.match(source, /\.mcs-status:empty::before \{ display: none; \}/u)
 })
 
 test('按钮重置不能压过组件样式（回归：主按钮曾因此只剩文字）', () => {

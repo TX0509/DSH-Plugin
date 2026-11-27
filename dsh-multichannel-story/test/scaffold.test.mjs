@@ -159,3 +159,129 @@ test('scaffold-video.py 语法可解析（不生成 __pycache__）', (t) => {
   })
   assert.equal(result.status, 0, `${result.stdout}${result.stderr}`)
 })
+
+// ---------------------------------------------------------------- 输入校验与转义
+
+test('场景 id 重复时直接失败，且不留下半个工程', (t) => {
+  const reason = skipNoPython()
+  if (reason !== false) {
+    t.skip(reason)
+    return
+  }
+  const dir = makeProject(t, {
+    ...SCENES,
+    scenes: [
+      { id: 's1', start: 0, duration: 2, title: ['一'] },
+      { id: 's1', start: 2, duration: 2, title: ['二'] },
+    ],
+  })
+  const { code, output } = runScaffold(['--dir', dir, '--scenes', join(dir, 'scenes.json')])
+  assert.equal(code, 1, output)
+  assert.match(output, /id 重复/u)
+  assert.ok(!existsSync(join(dir, 'index.html')))
+  assert.ok(!existsSync(join(dir, 'compositions')), '校验失败时不能留下 compositions/')
+})
+
+test('首场不从 start=0 开始 / 末场超出 duration 时失败', (t) => {
+  const reason = skipNoPython()
+  if (reason !== false) {
+    t.skip(reason)
+    return
+  }
+  const late = makeProject(t, { ...SCENES, scenes: [{ id: 's1', start: 3, duration: 2, title: ['晚'] }] })
+  const lateRun = runScaffold(['--dir', late, '--scenes', join(late, 'scenes.json')])
+  assert.equal(lateRun.code, 1, lateRun.output)
+  assert.match(lateRun.output, /首场必须从 start=0/u)
+
+  const over = makeProject(t, {
+    ...SCENES,
+    duration: 4,
+    scenes: [
+      { id: 's1', start: 0, duration: 3, title: ['一'] },
+      { id: 's2', start: 3, duration: 2, title: ['二'] },
+    ],
+  })
+  const overRun = runScaffold(['--dir', over, '--scenes', join(over, 'scenes.json')])
+  assert.equal(overRun.code, 1, overRun.output)
+  assert.match(overRun.output, /超过 duration/u)
+})
+
+test('文案里的 HTML/CSS 注入被转义，不会逃出 <title>/属性/CSS', (t) => {
+  const reason = skipNoPython()
+  if (reason !== false) {
+    t.skip(reason)
+    return
+  }
+  const dir = makeProject(t, {
+    ...SCENES,
+    scenes: [
+      {
+        id: 's1',
+        start: 0,
+        duration: 3,
+        kind: 'photo',
+        photo: 'assets/photo.jpg',
+        photoPos: '50% 40%',
+        title: ['</title><script>alert(1)</script>'],
+        body: 'a < b & "c"',
+      },
+    ],
+  })
+  // photo 必须存在，否则会在校验阶段失败；这里只测转义，给它一个占位文件。
+  writeFileSync(join(dir, 'assets', 'photo.jpg'), 'not a real image', 'utf8')
+  const { code, output } = runScaffold(['--dir', dir, '--scenes', join(dir, 'scenes.json')])
+  assert.equal(code, 0, output)
+  const html = readFileSync(join(dir, 'compositions', 's1.html'), 'utf8')
+  assert.ok(!html.includes('</title><script>alert(1)</script>'), 'title 里的 </title> 必须被转义')
+  assert.ok(html.includes('&lt;script&gt;'), '脚本标签要转义成实体')
+  assert.ok(html.includes('&lt;') && html.includes('&amp;'), '正文里的 < 与 & 都要转义')
+  const index = readFileSync(join(dir, 'index.html'), 'utf8')
+  assert.ok(!index.includes('</title><script>'), '根合成里的变量也要转义')
+})
+
+test('photoPos 只接受 object-position 写法，挡住任意 CSS 声明', (t) => {
+  const reason = skipNoPython()
+  if (reason !== false) {
+    t.skip(reason)
+    return
+  }
+  const dir = makeProject(t, {
+    ...SCENES,
+    scenes: [
+      {
+        id: 's1',
+        start: 0,
+        duration: 3,
+        kind: 'photo',
+        photo: 'assets/photo.jpg',
+        photoPos: '50% 40%; background: url(evil)',
+        title: ['x'],
+      },
+    ],
+  })
+  writeFileSync(join(dir, 'assets', 'photo.jpg'), 'placeholder', 'utf8')
+  const { code, output } = runScaffold(['--dir', dir, '--scenes', join(dir, 'scenes.json')])
+  assert.equal(code, 1, output)
+  assert.match(output, /photoPos/u)
+})
+
+test('旁白只接受工程内相对路径，且损坏/空文件要硬失败', (t) => {
+  const reason = skipNoPython()
+  if (reason !== false) {
+    t.skip(reason)
+    return
+  }
+  // 绝对路径：直接拒绝（写成浏览器加载不到的 src 等于静音成片）。
+  const absDir = makeProject(t, { ...SCENES, voice: { src: '/tmp/vo.mp3' } })
+  const absRun = runScaffold(['--dir', absDir, '--scenes', join(absDir, 'scenes.json')])
+  assert.equal(absRun.code, 1, absRun.output)
+  assert.match(absRun.output, /相对路径|工程内/u)
+
+  // 0 字节音频：读不出时长，必须失败而不是打印一句警告继续。
+  const emptyDir = makeProject(t, { ...SCENES, voice: { src: 'assets/imported/vo.mp3' } })
+  mkdirSync(join(emptyDir, 'assets', 'imported'), { recursive: true })
+  writeFileSync(join(emptyDir, 'assets', 'imported', 'vo.mp3'), '', 'utf8')
+  const emptyRun = runScaffold(['--dir', emptyDir, '--scenes', join(emptyDir, 'scenes.json')])
+  assert.equal(emptyRun.code, 1, emptyRun.output)
+  assert.match(emptyRun.output, /旁白音频/u)
+})

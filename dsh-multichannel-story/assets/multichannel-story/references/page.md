@@ -31,7 +31,22 @@ node "<base>/scripts/mcs.mjs" page <项目目录> --brand "#76B900" --out brand-
    - 删除页脚品牌署名 `<footer><p>归藏 Page · Built with constrained HTML</p></footer>`（用户要求：成稿不出现工具品牌）。
    - 竖幅人像按栏宽收窄：`max-width:660px; height:840px; object-fit:cover`，否则竖图会占满整屏。
 
+   `--out` 的安全规则（渲染器会直接写到这个路径，写错就毁输入）：
+   - 必须在项目目录内；不能用符号链接（链接可能指到源稿或项目外）；
+   - 已存在的文件默认拒绝，确认覆盖项目内的普通文件才加 `--force`；
+   - 不能指向 `article.md` / `annotations.json`。
+   - `--cap-fig` 的文件名会被写进 HTML/CSS：不能含 `<`、`>`、控制字符或换行（否则会被拒绝）。
+
 6. **导出**：
+
+   `mcs page` 结束时会打印一段 **导出 argv（JSON 数组）**，例如：
+
+   ```
+   导出 argv（按数组直接执行，不要拼 shell 字符串）：["node","…/export.mjs","out.html","--pdf","out.pdf","--png","out-长图.png","--width","1240"]
+   ```
+
+   用这组参数按数组执行（不要复制成一行 shell 命令：项目名/文件名里可能有 `$(...)`、反引号或空格）。
+   等价的手写形式：
 
 ```bash
 node <page-skill>/scripts/export.mjs <out>.html --pdf <out>.pdf --png <out>-长图.png --width 1240

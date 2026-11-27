@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { postProcessPage } from '../assets/multichannel-story/scripts/page-post.mjs'
+import { escapeAttribute, postProcessPage } from '../assets/multichannel-story/scripts/page-post.mjs'
 
 const FOOTER = '<footer><p>归藏 Page · Built with constrained HTML</p></footer>'
 const CAPS = [{ name: 'portrait.jpg', width: '660', height: '840' }]
@@ -67,4 +67,33 @@ test('没有竖图时不插入任何 CSS', () => {
 test('入参不是字符串时直接报错，避免把 undefined 拼进 HTML', () => {
   assert.throws(() => postProcessPage(undefined, []), /HTML 字符串/u)
   assert.throws(() => postProcessPage('<html></html>', 'nope'), /必须是数组/u)
+})
+
+test('文件名里的尖括号与换行被拒绝（否则会逃出 <style>）', () => {
+  const html = '<html><head></head><body></body></html>'
+  assert.throws(
+    () => postProcessPage(html, [{ name: 'x</style><script>alert(1)</script>.jpg', width: '10', height: '20' }]),
+    /非法字符/u,
+  )
+  assert.throws(
+    () => postProcessPage(html, [{ name: 'a\nb.jpg', width: '10', height: '20' }]),
+    /非法字符/u,
+  )
+  assert.throws(
+    () => postProcessPage(html, [{ name: '', width: '10', height: '20' }]),
+    /非空字符串/u,
+  )
+})
+
+test('宽度/高度必须是像素数，不能把任意 CSS 拼进去', () => {
+  const html = '<html><head></head><body></body></html>'
+  assert.throws(
+    () => postProcessPage(html, [{ name: 'a.jpg', width: '10px;background:url(evil)', height: '20' }]),
+    /像素数/u,
+  )
+})
+
+test('防御性转义：即使绕过上面的校验，尖括号也会被转成 CSS 转义序列', () => {
+  assert.equal(escapeAttribute('<style>'), '\\3c style\\3e ')
+  assert.equal(escapeAttribute('a\r\nb'), 'ab')
 })

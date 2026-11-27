@@ -171,3 +171,51 @@ test('缺 SKILL.md 的源被拒绝', (t) => {
   assert.equal(code, 1, output)
   assert.match(output, /没有 SKILL\.md/u)
 })
+
+/** 用额外参数跑同步脚本（--manifest-only 等）。 */
+function runWithArgs(pkg, args) {
+  const result = spawnSync(process.execPath, [pkg.script, ...args], { encoding: 'utf8', windowsHide: true })
+  return { code: result.status, output: `${result.stdout ?? ''}${result.stderr ?? ''}` }
+}
+
+test('--manifest-only：按现有副本重算清单，且重跑逐字节一致', (t) => {
+  const pkg = copyPackage(t)
+  // 就地改一处内容，模拟"上游源目录不在本机、只能就地维护副本"的场景。
+  writeFileSync(join(pkg.assets, 'scripts', 'mcs.mjs'), '// 改过的 mcs\n', 'utf8')
+  const first = runWithArgs(pkg, ['--manifest-only'])
+  assert.equal(first.code, 0, first.output)
+  const manifestBytes = readFileSync(join(pkg.assets, 'MANIFEST.json'))
+  const recorded = JSON.parse(manifestBytes.toString('utf8')).files
+  const actualHash = createHash('sha256').update(readFileSync(join(pkg.assets, 'scripts', 'mcs.mjs'))).digest('hex')
+  assert.equal(recorded['scripts/mcs.mjs'], actualHash, '清单要记录改后的哈希')
+  assert.ok(!('MANIFEST.json' in recorded), '清单不能记录自己')
+  assert.deepEqual(Object.keys(recorded), [...Object.keys(recorded)].sort(), '清单键要排序（保证可重算）')
+
+  const second = runWithArgs(pkg, ['--manifest-only'])
+  assert.equal(second.code, 0, second.output)
+  assert.deepEqual(readFileSync(join(pkg.assets, 'MANIFEST.json')), manifestBytes, '重算必须是逐字节确定的')
+})
+
+test('--manifest-only：副本混进不该发布的文件时拒绝且不改清单', (t) => {
+  const pkg = copyPackage(t)
+  const manifestPath = join(pkg.assets, 'MANIFEST.json')
+  const before = readFileSync(manifestPath)
+  mkdirSync(join(pkg.assets, 'scripts'), { recursive: true })
+  writeFileSync(join(pkg.assets, 'scripts', 'install.sh'), '#!/usr/bin/env bash\n', 'utf8')
+
+  const { code, output } = runWithArgs(pkg, ['--manifest-only'])
+  assert.equal(code, 1, output)
+  assert.match(output, /不该随包发布|install\.sh/u)
+  assert.deepEqual(readFileSync(manifestPath), before, '失败时不得改清单')
+})
+
+test('未知参数被拒绝（退出码 2），--help 成功退出', (t) => {
+  const pkg = copyPackage(t)
+  const unknown = runWithArgs(pkg, ['--nope'])
+  assert.equal(unknown.code, 2, unknown.output)
+  assert.match(unknown.output, /未知参数/u)
+
+  const help = runWithArgs(pkg, ['--help'])
+  assert.equal(help.code, 0, help.output)
+  assert.match(help.output, /--manifest-only/u)
+})
